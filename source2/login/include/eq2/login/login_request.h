@@ -4,7 +4,10 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include <eq2/protocol/packet_buffer.h>
 
 namespace eq2::login {
 
@@ -17,83 +20,74 @@ struct ParsedLoginRequest {
 
 namespace detail {
 
-inline auto read_i16_le(std::span<const std::uint8_t> bytes, std::size_t& offset)
-    -> std::optional<std::int16_t> {
-  if (offset + 2 > bytes.size()) {
+inline auto read_i16_le(eq2::protocol::PacketReader& reader) -> std::optional<std::int16_t> {
+  const auto value = reader.read_u16_le();
+  if (!value.has_value()) {
     return std::nullopt;
   }
 
-  const auto value = static_cast<std::uint16_t>(bytes[offset]) |
-                     static_cast<std::uint16_t>(bytes[offset + 1] << 8U);
-  offset += 2;
-  return static_cast<std::int16_t>(value);
+  return static_cast<std::int16_t>(*value);
 }
 
-inline auto read_i32_le(std::span<const std::uint8_t> bytes, std::size_t& offset)
-    -> std::optional<std::int32_t> {
-  if (offset + 4 > bytes.size()) {
+inline auto read_i32_le(eq2::protocol::PacketReader& reader) -> std::optional<std::int32_t> {
+  const auto value = reader.read_u32_le();
+  if (!value.has_value()) {
     return std::nullopt;
   }
 
-  const auto value = static_cast<std::uint32_t>(bytes[offset]) |
-                     (static_cast<std::uint32_t>(bytes[offset + 1]) << 8U) |
-                     (static_cast<std::uint32_t>(bytes[offset + 2]) << 16U) |
-                     (static_cast<std::uint32_t>(bytes[offset + 3]) << 24U);
-  offset += 4;
-  return static_cast<std::int32_t>(value);
+  return static_cast<std::int32_t>(*value);
 }
 
-inline auto read_eq2_16bit_string(std::span<const std::uint8_t> bytes, std::size_t& offset)
+inline auto read_eq2_16bit_string(eq2::protocol::PacketReader& reader)
     -> std::optional<std::string> {
-  const auto size = read_i16_le(bytes, offset);
+  const auto size = read_i16_le(reader);
   if (!size || *size < 0) {
     return std::nullopt;
   }
 
   const auto string_size = static_cast<std::size_t>(*size);
-  if (offset + string_size > bytes.size()) {
+  const auto bytes = reader.read_bytes(string_size);
+  if (!bytes.has_value()) {
     return std::nullopt;
   }
 
-  auto value = std::string(reinterpret_cast<const char*>(bytes.data() + offset), string_size);
-  offset += string_size;
-  return value;
+  return std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size());
 }
 
 }  // namespace detail
 
 inline auto parse_legacy_login_request(std::span<const std::uint8_t> bytes)
     -> std::optional<ParsedLoginRequest> {
-  auto offset = std::size_t{0};
+  eq2::protocol::PacketReader reader(bytes);
 
-  auto access_code = detail::read_eq2_16bit_string(bytes, offset);
+  auto access_code = detail::read_eq2_16bit_string(reader);
   if (!access_code) {
     return std::nullopt;
   }
 
-  if (!detail::read_eq2_16bit_string(bytes, offset)) {
+  if (!detail::read_eq2_16bit_string(reader)) {
     return std::nullopt;
   }
 
-  auto username = detail::read_eq2_16bit_string(bytes, offset);
-  auto password = detail::read_eq2_16bit_string(bytes, offset);
+  auto username = detail::read_eq2_16bit_string(reader);
+  auto password = detail::read_eq2_16bit_string(reader);
   if (!username || !password) {
     return std::nullopt;
   }
 
   for (auto i = 0; i < 4; ++i) {
-    if (!detail::read_eq2_16bit_string(bytes, offset)) {
+    if (!detail::read_eq2_16bit_string(reader)) {
       return std::nullopt;
     }
   }
 
-  auto version = detail::read_i16_le(bytes, offset);
+  auto version = detail::read_i16_le(reader);
   if (!version) {
     return std::nullopt;
   }
 
   for (auto i = 0; i < 2; ++i) {
-    if (!detail::read_i32_le(bytes, offset)) {
+    if (!detail::read_i32_le(reader)) {
       return std::nullopt;
     }
   }
@@ -108,25 +102,21 @@ inline auto parse_legacy_login_request(std::span<const std::uint8_t> bytes)
 
 inline auto encode_legacy_login_request_fixture(const ParsedLoginRequest& request)
     -> std::vector<std::uint8_t> {
-  auto bytes = std::vector<std::uint8_t>{};
+  eq2::protocol::PacketWriter writer;
 
-  const auto append_i16 = [&bytes](std::int16_t value) {
-    const auto unsigned_value = static_cast<std::uint16_t>(value);
-    bytes.push_back(static_cast<std::uint8_t>(unsigned_value & 0xffU));
-    bytes.push_back(static_cast<std::uint8_t>((unsigned_value >> 8U) & 0xffU));
+  const auto append_i16 = [&writer](std::int16_t value) {
+    writer.append_u16_le(static_cast<std::uint16_t>(value));
   };
 
-  const auto append_i32 = [&bytes](std::int32_t value) {
-    const auto unsigned_value = static_cast<std::uint32_t>(value);
-    bytes.push_back(static_cast<std::uint8_t>(unsigned_value & 0xffU));
-    bytes.push_back(static_cast<std::uint8_t>((unsigned_value >> 8U) & 0xffU));
-    bytes.push_back(static_cast<std::uint8_t>((unsigned_value >> 16U) & 0xffU));
-    bytes.push_back(static_cast<std::uint8_t>((unsigned_value >> 24U) & 0xffU));
+  const auto append_i32 = [&writer](std::int32_t value) {
+    writer.append_u32_le(static_cast<std::uint32_t>(value));
   };
 
-  const auto append_string = [&append_i16, &bytes](const std::string& value) {
+  const auto append_string = [&append_i16, &writer](const std::string& value) {
     append_i16(static_cast<std::int16_t>(value.size()));
-    bytes.insert(bytes.end(), value.begin(), value.end());
+    writer.append_bytes(std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(value.data()),
+        value.size()));
   };
 
   append_string(request.access_code);
@@ -142,7 +132,7 @@ inline auto encode_legacy_login_request_fixture(const ParsedLoginRequest& reques
   append_i32(0);
   append_i32(0);
 
-  return bytes;
+  return std::move(writer).into_bytes();
 }
 
 }  // namespace eq2::login

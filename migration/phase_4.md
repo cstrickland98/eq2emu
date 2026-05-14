@@ -1,6 +1,6 @@
 # Phase 4: Protocol Module
 
-Status: planned.
+Status: in progress.
 
 ## Purpose
 
@@ -19,8 +19,17 @@ Protocol owns packet structure, opcode mapping, stream framing rules that are pr
 - Serialization tests using captured or golden packets.
 - Compression/encryption boundary definitions.
 
+## Progress
+
+- Added protocol-owned packet buffer reader/writer helpers with bounds-checked reads and explicit wire byte order.
+- Added protocol and application packet header helpers, including legacy one-byte login opcodes and padded two-byte opcode handling.
+- Added application packet encode/decode helpers and transport transform boundary policy for compression, encoding, and CRC ownership.
+- Added a versioned packet registry on top of opcode version ranges and opcode tables.
+- Added standalone `eq2_protocol_tests` under the protocol module; it links only `eq2::protocol` and covers packet buffers, headers, session serialization, opcode lookup, versioned registration, and transform boundary behavior.
+- Updated source2 login request parsing fixtures to consume the protocol packet reader/writer helpers instead of owning local byte-order routines.
+- Confirmed the Debug source2 build and all current CTest tests pass after the first Phase 4 slice.
+
 ## Exit Criteria
 
 - Protocol tests run without login, world, zone, database, or scripting dependencies.
 - Login and world code consume protocol APIs instead of legacy packet internals.
-
