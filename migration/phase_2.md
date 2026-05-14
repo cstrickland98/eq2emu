@@ -1,6 +1,6 @@
 # Phase 2: Characterization Tests
 
-Status: in progress.
+Status: complete.
 
 ## Purpose
 
@@ -31,6 +31,10 @@ Add focused tests around protocol, login, world registration, character select, 
 - Added login/world request struct version fallback coverage for the Phase 1 login and world entry flows.
 - Added login authentication success, invalid password, bad version, account creation, and duplicate-session characterization coverage.
 - Added world registration admission coverage for unauthenticated packet rejection, valid `ServerOP_LSInfo`, bad versions, invalid world accounts, disabled accounts, and debug world type handling.
+- Added legacy login request field parsing coverage for length-prefixed credentials, client version, and truncated packet rejection.
+- Added character select mapping coverage for `login_characters`, `login_char_colors`, and `login_equipment` behavior, including legacy SOGA fallback fields, packet version constants, appearance color/signed values, and the twenty-four-row equipment cap.
+- Added fake repository character-list coverage that verifies account-id loading and per-character appearance/equipment lookup by `login_characters.id`.
+- Golden packet coverage is represented by inline byte fixtures for known protocol/session/login request layouts; no captured external packet fixture files are currently available in the repository.
 
 ## Exit Criteria
 
