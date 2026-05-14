@@ -1,4 +1,5 @@
 #include <eq2/protocol/application_packet.h>
+#include <eq2/protocol/combined_packet.h>
 #include <eq2/protocol/opcode_table.h>
 #include <eq2/protocol/opcode_version.h>
 #include <eq2/protocol/packet_buffer.h>
@@ -220,6 +221,39 @@ void versioned_packet_registry_resolves_client_versions() {
   require_eq(definition->struct_version, static_cast<std::int16_t>(1208), "registry carries struct version");
 }
 
+void combined_packet_framing_preserves_legacy_length_prefixes() {
+  const auto first =
+      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpAck, std::array<std::uint8_t, 2>{0x10, 0x20});
+  std::vector<std::uint8_t> large_payload(253, 0xab);
+  const auto second = eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket, large_payload);
+  const std::array<std::span<const std::uint8_t>, 2> subpackets{
+      std::span<const std::uint8_t>(first),
+      std::span<const std::uint8_t>(second),
+  };
+
+  const auto combined = eq2::protocol::encode_combined_packet(subpackets);
+  require(combined.has_value(), "combined packet encodes subpackets");
+  require_eq((*combined)[0], static_cast<std::uint8_t>(first.size()), "small subpacket uses one-byte length");
+  require_eq((*combined)[first.size() + 1], eq2::protocol::kExtendedCombinedPacketLength,
+             "large subpacket uses extended length marker");
+  require_eq((*combined)[first.size() + 2], static_cast<std::uint8_t>(0x00),
+             "extended length stores high byte first");
+  require_eq((*combined)[first.size() + 3], static_cast<std::uint8_t>(second.size()),
+             "extended length stores low byte second");
+
+  const auto decoded = eq2::protocol::decode_combined_packet(*combined);
+  require(decoded.has_value(), "combined packet decodes");
+  require_eq(decoded->size(), static_cast<std::size_t>(2), "combined packet exposes both subpackets");
+  require_eq((*decoded)[0].length_prefix_size, static_cast<std::size_t>(1), "small prefix size is reported");
+  require_eq((*decoded)[1].length_prefix_size, static_cast<std::size_t>(3), "extended prefix size is reported");
+  require(span_to_vector((*decoded)[0].bytes) == first, "first subpacket bytes round trip");
+  require(span_to_vector((*decoded)[1].bytes) == second, "second subpacket bytes round trip");
+
+  const std::array<std::uint8_t, 4> truncated{0x04, 0x00, 0x09, 0xaa};
+  require(!eq2::protocol::decode_combined_packet(truncated).has_value(),
+          "combined packet rejects truncated subpacket data");
+}
+
 void transform_policy_marks_compression_encryption_boundaries() {
   const auto format = eq2::protocol::session_response_format(true, true);
   const auto policy = eq2::protocol::packet_transform_policy(format);
@@ -234,6 +268,28 @@ void transform_policy_marks_compression_encryption_boundaries() {
           "session request is outside the CRC boundary");
   require(eq2::protocol::protocol_packet_uses_crc(eq2::protocol::kOpPacket),
           "sequenced packet stays inside the CRC boundary");
+
+  const auto session_request = eq2::protocol::encode_protocol_packet(eq2::protocol::kOpSessionRequest, {});
+  const auto session_crc = eq2::protocol::packet_crc_policy(session_request);
+  require(session_crc.has_value(), "session request has crc policy");
+  require(!session_crc->requires_crc, "session request bypasses crc");
+
+  const auto packet = eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket, std::array<std::uint8_t, 1>{0});
+  const auto packet_crc = eq2::protocol::packet_crc_policy(packet);
+  require(packet_crc.has_value(), "sequenced packet has crc policy");
+  require(packet_crc->requires_crc, "sequenced packet requires crc");
+
+  const std::array<std::uint8_t, 5> legacy_app_combined{
+      0x00,
+      eq2::protocol::kOpAppCombined,
+      0x00,
+      eq2::protocol::kOpAppCombined,
+      0x01,
+  };
+  const auto app_combined_crc = eq2::protocol::packet_crc_policy(legacy_app_combined);
+  require(app_combined_crc.has_value(), "legacy app-combined packet has crc policy");
+  require(app_combined_crc->legacy_app_combined_bypass, "legacy app-combined bypass is identified");
+  require(!app_combined_crc->requires_crc, "legacy app-combined packet bypasses crc");
 }
 
 }  // namespace
@@ -246,6 +302,7 @@ int main() {
   application_packet_headers_preserve_legacy_opcode_forms();
   opcode_tables_and_version_ranges_match_legacy_lookup();
   versioned_packet_registry_resolves_client_versions();
+  combined_packet_framing_preserves_legacy_length_prefixes();
   transform_policy_marks_compression_encryption_boundaries();
 
   if (failures != 0) {

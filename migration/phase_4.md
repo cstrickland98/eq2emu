@@ -25,8 +25,11 @@ Protocol owns packet structure, opcode mapping, stream framing rules that are pr
 - Added protocol and application packet header helpers, including legacy one-byte login opcodes and padded two-byte opcode handling.
 - Added application packet encode/decode helpers and transport transform boundary policy for compression, encoding, and CRC ownership.
 - Added a versioned packet registry on top of opcode version ranges and opcode tables.
+- Added protocol-owned combined-packet length framing helpers for legacy `OP_Combined` embedded packet payloads.
+- Added raw packet CRC policy helpers that document the legacy session-packet and app-combined CRC bypasses without pulling CRC implementation into `net`.
 - Added standalone `eq2_protocol_tests` under the protocol module; it links only `eq2::protocol` and covers packet buffers, headers, session serialization, opcode lookup, versioned registration, and transform boundary behavior.
 - Updated source2 login request parsing fixtures to consume the protocol packet reader/writer helpers instead of owning local byte-order routines.
+- Moved login-bound protocol characterization coverage under `source2/login/tests` so the protocol test directory remains dependency-clean.
 - Confirmed the Debug source2 build and all current CTest tests pass after the first Phase 4 slice.
 
 ## Exit Criteria
