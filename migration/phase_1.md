@@ -1,6 +1,6 @@
 # Phase 1: Behavior Inventory
 
-Status: active.
+Status: complete.
 
 ## Purpose
 
@@ -123,5 +123,30 @@ For flows, prefer numbered event traces:
 
 ## Review Gate
 
-Pause after the inventory documents are written. Review whether the proposed source2 ownership boundaries are correct before writing characterization tests.
+Phase 1 is complete when the linked inventory documents are reviewed. Do not begin phase 2 until the source2 ownership boundaries in these files are accepted or corrected.
 
+## Completed Inventory Documents
+
+- `migration/phase_1_runtime_inventory.md`
+- `migration/phase_1_threading_inventory.md`
+- `migration/phase_1_protocol_inventory.md`
+- `migration/phase_1_database_inventory.md`
+- `migration/phase_1_lua_inventory.md`
+
+## Phase 1 Summary
+
+The legacy runtime is centered on two executables:
+
+- Login server: `source/LoginServer/net.cpp`
+- World server: `source/WorldServer/net.cpp`
+
+Both executables rely on global service objects, a main loop that drains `EQStreamFactory`, and multiple detached worker threads. The most important source2 architectural decision is that mutable gameplay state should move behind owner executors:
+
+- Login state: login executor.
+- World/session state: world executor.
+- Zone/spawn state: zone executor.
+- Socket IO: net transport.
+- Blocking queries: DB worker pool.
+- Lua state: scripting service with owner-aware mutation APIs.
+
+The next review should focus on whether those owner boundaries are correct before characterization tests are written.
