@@ -7,7 +7,7 @@
 #include <span>
 #include <vector>
 
-#include <eq2/protocol/byte_order.h>
+#include <eq2/core/endian.h>
 
 namespace eq2::protocol {
 
@@ -38,7 +38,7 @@ inline auto encode_protocol_packet(std::uint16_t opcode,
   }
 
   std::vector<std::uint8_t> bytes(2 + payload.size() - payload_offset);
-  write_u16_be(std::span<std::uint8_t>(bytes), 0, opcode);
+  eq2::core::write_u16_be(std::span<std::uint8_t>(bytes), 0, opcode);
   std::copy(payload.begin() + static_cast<std::ptrdiff_t>(payload_offset), payload.end(), bytes.begin() + 2);
   return bytes;
 }
@@ -50,7 +50,7 @@ inline auto decode_protocol_packet(std::span<const std::uint8_t> bytes)
   }
 
   return ProtocolPacketView{
-      .opcode = read_u16_be(bytes, 0),
+      .opcode = eq2::core::read_u16_be(bytes, 0),
       .payload = bytes.subspan(2),
   };
 }

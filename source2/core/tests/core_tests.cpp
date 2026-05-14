@@ -7,6 +7,7 @@
 #include <eq2/core/shutdown.h>
 #include <eq2/core/timer.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -14,6 +15,7 @@
 #include <mutex>
 #include <span>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -46,6 +48,16 @@ void result_carries_success_or_error() {
   });
   require(!failure.has_value(), "failed result reports no value");
   require_eq(failure.error().code, eq2::core::ErrorCode::parse_error, "failed result carries code");
+
+  auto void_success = eq2::core::Result<void>::success();
+  require(void_success.has_value(), "void result reports success");
+
+  auto void_failure = eq2::core::Result<void>::failure(eq2::core::Error{
+      .code = eq2::core::ErrorCode::cancelled,
+      .message = "stopped",
+  });
+  require(!void_failure.has_value(), "void result reports failure");
+  require_eq(void_failure.error().code, eq2::core::ErrorCode::cancelled, "void result carries error code");
 }
 
 void map_config_reads_strings_and_booleans() {
@@ -117,6 +129,19 @@ void byte_buffer_writes_endian_values() {
           "byte buffer writes big and little endian values");
 }
 
+void endian_helpers_read_and_write_spans_and_arrays() {
+  std::array<std::uint8_t, 12> bytes{};
+  eq2::core::write_u16_be(bytes, 0, 0x1234);
+  eq2::core::write_u16_le(bytes, 2, 0x5678);
+  eq2::core::write_u32_be(bytes, 4, 0x90abcdef);
+  eq2::core::write_u32_le(bytes, 8, 0x10203040);
+
+  require_eq(eq2::core::read_u16_be(bytes, 0), static_cast<std::uint16_t>(0x1234), "array reads big endian u16");
+  require_eq(eq2::core::read_u16_le(bytes, 2), static_cast<std::uint16_t>(0x5678), "array reads little endian u16");
+  require_eq(eq2::core::read_u32_be(bytes, 4), static_cast<std::uint32_t>(0x90abcdef), "array reads big endian u32");
+  require_eq(eq2::core::read_u32_le(bytes, 8), static_cast<std::uint32_t>(0x10203040), "array reads little endian u32");
+}
+
 void blocking_queue_preserves_fifo_and_closes() {
   eq2::core::BlockingQueue<int> queue;
   require(queue.push(1), "queue accepts first value");
@@ -156,9 +181,19 @@ void serial_executor_runs_posted_tasks_in_order() {
 
 void shutdown_signal_reports_stop_request() {
   eq2::core::ShutdownSignal signal;
+  std::atomic_bool waiter_finished = false;
+
+  std::thread waiter([&] {
+    signal.wait();
+    waiter_finished = true;
+  });
+
   require(!signal.stop_requested(), "shutdown signal starts clear");
   signal.request_stop();
+  waiter.join();
+
   require(signal.stop_requested(), "shutdown signal records stop request");
+  require(waiter_finished, "shutdown signal wakes waiters");
 }
 
 }  // namespace
@@ -169,6 +204,7 @@ int main() {
   log_sink_receives_structured_records();
   manual_clock_drives_deadline_and_interval_timers();
   byte_buffer_writes_endian_values();
+  endian_helpers_read_and_write_spans_and_arrays();
   blocking_queue_preserves_fifo_and_closes();
   serial_executor_runs_posted_tasks_in_order();
   shutdown_signal_reports_stop_request();
