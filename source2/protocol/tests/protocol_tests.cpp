@@ -1,13 +1,17 @@
 #include <eq2/protocol/application_packet.h>
 #include <eq2/protocol/combined_packet.h>
+#include <eq2/protocol/delete_character.h>
 #include <eq2/protocol/interserver_packet.h>
+#include <eq2/protocol/login_request.h>
 #include <eq2/protocol/login_world.h>
 #include <eq2/protocol/opcode_table.h>
 #include <eq2/protocol/opcode_version.h>
 #include <eq2/protocol/packet_buffer.h>
+#include <eq2/protocol/packet_fields.h>
 #include <eq2/protocol/packet_header.h>
 #include <eq2/protocol/packet_registry.h>
 #include <eq2/protocol/packet_transform.h>
+#include <eq2/protocol/play_character.h>
 #include <eq2/protocol/protocol_packet.h>
 #include <eq2/protocol/session.h>
 
@@ -18,6 +22,7 @@
 #include <iostream>
 #include <map>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -70,6 +75,29 @@ void packet_reader_and_writer_handle_bounds() {
   require_eq(reader.read_u32_le().value_or(0), static_cast<std::uint32_t>(0x10203040),
              "reader reads little-endian u32");
   require(!reader.read_u8().has_value(), "reader returns empty optional past end");
+}
+
+void packet_field_helpers_handle_eq2_length_prefixed_strings() {
+  eq2::protocol::PacketWriter writer;
+  eq2::protocol::append_eq2_8bit_string(writer, "world");
+  eq2::protocol::append_eq2_16bit_string(writer, "character");
+
+  const std::vector<std::uint8_t> expected{
+      0x05,
+      'w', 'o', 'r', 'l', 'd',
+      0x09, 0x00,
+      'c', 'h', 'a', 'r', 'a', 'c', 't', 'e', 'r',
+  };
+  require(span_to_vector(writer.bytes()) == expected,
+          "EQ2 string helpers write one-byte and two-byte length prefixes");
+
+  eq2::protocol::PacketReader reader(writer.bytes());
+  const auto small = eq2::protocol::read_eq2_8bit_string(reader);
+  const auto medium = eq2::protocol::read_eq2_16bit_string(reader);
+  require(small.has_value(), "EQ2 8-bit string reads");
+  require(medium.has_value(), "EQ2 16-bit string reads");
+  require_eq(*small, std::string("world"), "EQ2 8-bit string round trips");
+  require_eq(*medium, std::string("character"), "EQ2 16-bit string round trips");
 }
 
 void session_request_round_trips_legacy_wire_order() {
@@ -367,10 +395,342 @@ void server_ls_info_payload_decodes_fixed_legacy_fields() {
   require_eq(info->database_version, static_cast<std::uint32_t>(1234), "LSInfo DB version decodes");
 }
 
+void user_to_world_payloads_preserve_login_world_handoff_fields() {
+  const eq2::protocol::UserToWorldRequest request{
+      .login_account_id = 1001,
+      .character_id = 2002,
+      .world_id = 77,
+      .from_id = 10,
+      .to_id = 20,
+      .ip_address = "192.0.2.10",
+  };
+
+  const auto request_payload = eq2::protocol::encode_user_to_world_request_payload(request);
+  require_eq(request_payload.size(), eq2::protocol::kUserToWorldRequestPayloadSize,
+             "UserToWorld request payload has the packed legacy size");
+
+  const auto request_frame =
+      eq2::protocol::encode_interserver_packet(eq2::protocol::kServerOpUserToWorldRequest,
+                                               request_payload);
+  require(request_frame.has_value(), "UserToWorld request frame encodes");
+  const auto decoded_request_frame = eq2::protocol::decode_interserver_packet(*request_frame);
+  require(decoded_request_frame.has_value(), "UserToWorld request frame decodes");
+  require_eq(decoded_request_frame->opcode, eq2::protocol::kServerOpUserToWorldRequest,
+             "UserToWorld request opcode round trips");
+
+  const auto decoded_request =
+      eq2::protocol::decode_user_to_world_request_payload(decoded_request_frame->payload);
+  require(decoded_request.has_value(), "UserToWorld request payload decodes");
+  require_eq(decoded_request->login_account_id, request.login_account_id,
+             "UserToWorld request login account id decodes");
+  require_eq(decoded_request->character_id, request.character_id,
+             "UserToWorld request character id decodes");
+  require_eq(decoded_request->world_id, request.world_id, "UserToWorld request world id decodes");
+  require_eq(decoded_request->from_id, request.from_id, "UserToWorld request FromID decodes");
+  require_eq(decoded_request->to_id, request.to_id, "UserToWorld request ToID decodes");
+  require_eq(decoded_request->ip_address, std::string_view("192.0.2.10"),
+             "UserToWorld request IP address decodes");
+
+  const eq2::protocol::UserToWorldResponse response{
+      .login_account_id = 1001,
+      .character_id = 2002,
+      .world_id = 77,
+      .access_key = 0x10203040,
+      .response = 1,
+      .ip_address = "198.51.100.20",
+      .port = 9100,
+      .from_id = 20,
+      .to_id = 10,
+  };
+
+  const auto response_payload = eq2::protocol::encode_user_to_world_response_payload(response);
+  require_eq(response_payload.size(), eq2::protocol::kUserToWorldResponsePayloadSize,
+             "UserToWorld response payload has the packed legacy size");
+
+  const auto decoded_response = eq2::protocol::decode_user_to_world_response_payload(response_payload);
+  require(decoded_response.has_value(), "UserToWorld response payload decodes");
+  require_eq(decoded_response->login_account_id, response.login_account_id,
+             "UserToWorld response login account id decodes");
+  require_eq(decoded_response->character_id, response.character_id,
+             "UserToWorld response character id decodes");
+  require_eq(decoded_response->world_id, response.world_id, "UserToWorld response world id decodes");
+  require_eq(decoded_response->access_key, response.access_key,
+             "UserToWorld response access key decodes");
+  require_eq(decoded_response->response, response.response, "UserToWorld response code decodes");
+  require_eq(decoded_response->ip_address, std::string_view("198.51.100.20"),
+             "UserToWorld response IP address decodes");
+  require_eq(decoded_response->port, response.port, "UserToWorld response port decodes");
+  require_eq(decoded_response->from_id, response.from_id, "UserToWorld response FromID decodes");
+  require_eq(decoded_response->to_id, response.to_id, "UserToWorld response ToID decodes");
+
+  auto truncated = response_payload;
+  truncated.pop_back();
+  require(!eq2::protocol::decode_user_to_world_response_payload(truncated).has_value(),
+          "truncated UserToWorld response payload is rejected");
+}
+
+void legacy_login_request_decodes_length_prefixed_credentials_and_version() {
+  const auto fixture = eq2::protocol::encode_legacy_login_request_fixture(eq2::protocol::LoginRequest{
+      .access_code = "station",
+      .username = "tester",
+      .password = "secret",
+      .version = 546,
+  });
+
+  const auto parsed = eq2::protocol::parse_legacy_login_request(fixture);
+
+  require(parsed.has_value(), "legacy login request parses in protocol");
+  require_eq(parsed->access_code, std::string("station"), "access code field follows legacy order");
+  require_eq(parsed->username, std::string("tester"), "username field follows legacy order");
+  require_eq(parsed->password, std::string("secret"), "password field follows legacy order");
+  require_eq(parsed->version, static_cast<std::int16_t>(546),
+             "client version field follows the four trailing unknown strings");
+
+  auto truncated = fixture;
+  truncated.pop_back();
+  require(!eq2::protocol::parse_legacy_login_request(truncated).has_value(),
+          "truncated login request is rejected in protocol");
+}
+
+void login_by_num_request_decodes_legacy_and_extended_world_entry_layouts() {
+  const eq2::protocol::LoginByNumRequest request{
+      .account_id = 42,
+      .access_code = 0x12345678,
+      .version = 546,
+  };
+
+  const auto legacy_bytes = eq2::protocol::encode_legacy_login_by_num_request_fixture(request);
+  const std::vector<std::uint8_t> expected_legacy{
+      0x2a, 0x00, 0x00, 0x00,
+      0x78, 0x56, 0x34, 0x12,
+      0x22, 0x02,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+  };
+  require(legacy_bytes == expected_legacy,
+          "legacy LoginByNumRequest keeps account, access key, and version at the original offsets");
+
+  const auto legacy = eq2::protocol::parse_legacy_login_by_num_request(legacy_bytes);
+  require(legacy.has_value(), "legacy LoginByNumRequest parses");
+  require_eq(legacy->account_id, request.account_id, "legacy LoginByNumRequest account id parses");
+  require_eq(legacy->access_code, request.access_code, "legacy LoginByNumRequest access key parses");
+  require_eq(legacy->version, request.version, "legacy LoginByNumRequest version parses");
+
+  const eq2::protocol::LoginByNumRequest extended_request{
+      .account_id = 77,
+      .access_code = 0x01020304,
+      .version = 1208,
+  };
+  const auto extended_bytes =
+      eq2::protocol::encode_extended_login_by_num_request_fixture(extended_request);
+  const auto extended = eq2::protocol::parse_extended_login_by_num_request(extended_bytes);
+  require(extended.has_value(), "extended LoginByNumRequest parses");
+  require_eq(extended->account_id, extended_request.account_id,
+             "extended LoginByNumRequest account id parses");
+  require_eq(extended->access_code, extended_request.access_code,
+             "extended LoginByNumRequest access key parses");
+  require_eq(extended->version, extended_request.version,
+             "extended LoginByNumRequest version parses after the new unknown fields");
+
+  auto truncated = extended_bytes;
+  truncated.pop_back();
+  require(!eq2::protocol::parse_extended_login_by_num_request(truncated).has_value(),
+          "truncated extended LoginByNumRequest is rejected");
+}
+
+void login_request_version_fallbacks_match_phase1_inventory() {
+  eq2::protocol::OpcodeVersionRanges ranges;
+  ranges.add_range(546, 561);
+  ranges.add_range(1208, 1208);
+
+  require_eq(eq2::protocol::login_request_struct_version(546, ranges),
+             eq2::protocol::kLegacyLoginRequestStructVersion,
+             "login keeps legacy request struct for known classic version");
+  require_eq(eq2::protocol::login_request_struct_version(0, ranges),
+             eq2::protocol::kExtendedLoginRequestStructVersion,
+             "login retries extended request struct for zero classic version");
+  require_eq(eq2::protocol::login_request_struct_version(999, ranges),
+             eq2::protocol::kExtendedLoginRequestStructVersion,
+             "login retries extended request struct for unknown classic version");
+
+  require_eq(eq2::protocol::world_login_request_struct_version(546, ranges),
+             eq2::protocol::kLegacyLoginRequestStructVersion,
+             "world keeps legacy request struct for known pre-1208 version");
+  require_eq(eq2::protocol::world_login_request_struct_version(1208, ranges),
+             eq2::protocol::kExtendedLoginRequestStructVersion,
+             "world retries extended request struct for 1208 and newer");
+  require_eq(eq2::protocol::world_login_request_struct_version(999, ranges),
+             eq2::protocol::kExtendedLoginRequestStructVersion,
+             "world retries extended request struct for unknown classic version");
+
+  const auto extended_bytes =
+      eq2::protocol::encode_extended_login_by_num_request_fixture(eq2::protocol::LoginByNumRequest{
+          .account_id = 77,
+          .access_code = 0x01020304,
+          .version = 1208,
+      });
+
+  const auto parsed = eq2::protocol::parse_world_login_by_num_request(extended_bytes, ranges);
+  require(parsed.has_value(), "world LoginByNumRequest parser retries the extended layout");
+  require_eq(parsed->version, static_cast<std::int16_t>(1208),
+             "world LoginByNumRequest parser returns the extended version");
+}
+
+void play_character_request_and_response_packets_match_legacy_login_layouts() {
+  const auto old_request =
+      eq2::protocol::encode_legacy_play_character_request_fixture(eq2::protocol::PlayCharacterRequest{
+          .character_id = 1001,
+          .character_name = "Alys",
+      });
+  const std::vector<std::uint8_t> expected_old_request{
+      0xe9, 0x03, 0x00, 0x00,
+      0x04, 0x00,
+      'A', 'l', 'y', 's',
+  };
+  require(old_request == expected_old_request,
+          "old play request stores character id followed by a 16-bit character name");
+
+  const auto parsed_old = eq2::protocol::parse_play_character_request(old_request, 283);
+  require(parsed_old.has_value(), "old play request parses");
+  require_eq(parsed_old->character_id, 1001, "old play request character id decodes");
+  require_eq(parsed_old->character_name, std::string("Alys"), "old play request name decodes");
+  require_eq(parsed_old->server_id, 0, "old play request leaves server id for login DB lookup");
+
+  const auto modern_request =
+      eq2::protocol::encode_modern_play_character_request_fixture(eq2::protocol::PlayCharacterRequest{
+          .character_id = 1001,
+          .server_id = 77,
+      });
+  const std::vector<std::uint8_t> expected_modern_request{
+      0xe9, 0x03, 0x00, 0x00,
+      0x4d, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00,
+  };
+  require(modern_request == expected_modern_request,
+          "modern play request stores character id, server id, and three legacy unknown bytes");
+
+  const auto parsed_modern = eq2::protocol::parse_play_character_request(modern_request, 284);
+  require(parsed_modern.has_value(), "modern play request parses");
+  require_eq(parsed_modern->character_id, 1001, "modern play request character id decodes");
+  require_eq(parsed_modern->server_id, 77, "modern play request server id decodes");
+
+  const eq2::protocol::PlayCharacterResponse response{
+      .response = 1,
+      .server = "127.0.0.1",
+      .port = 9100,
+      .account_id = 42,
+      .access_code = 0x12345678,
+  };
+  const auto classic_response = eq2::protocol::encode_play_character_response_payload(response, 546);
+  const std::vector<std::uint8_t> expected_classic_response{
+      0x01,
+      0x09,
+      '1', '2', '7', '.', '0', '.', '0', '.', '1',
+      0x8c, 0x23,
+      0x2a, 0x00, 0x00, 0x00,
+      0x78, 0x56, 0x34, 0x12,
+  };
+  require(classic_response == expected_classic_response,
+          "classic play response writes response, 8-bit server string, port, account, and access code");
+
+  const auto parsed_classic =
+      eq2::protocol::decode_play_character_response_payload(classic_response, 546);
+  require(parsed_classic.has_value(), "classic play response decodes");
+  require_eq(parsed_classic->server, std::string("127.0.0.1"), "classic play response server decodes");
+  require_eq(parsed_classic->port, static_cast<std::uint16_t>(9100),
+             "classic play response port decodes");
+  require_eq(parsed_classic->access_code, 0x12345678, "classic play response access code decodes");
+
+  const auto version1096_response = eq2::protocol::encode_play_character_response_payload(response, 1096);
+  require_eq(version1096_response[1], static_cast<std::uint8_t>(0),
+             "1096 play response includes one zero int16 before server");
+  require_eq(version1096_response[2], static_cast<std::uint8_t>(0),
+             "1096 play response includes the second zero byte before server");
+  require_eq(version1096_response[3], static_cast<std::uint8_t>(9),
+             "1096 play response server string follows the one-int16 unknown");
+
+  const auto version60085_response =
+      eq2::protocol::encode_play_character_response_payload(response, 60085);
+  require_eq(version60085_response[7], static_cast<std::uint8_t>(9),
+             "60085 play response server string follows three int16 unknowns");
+
+  auto truncated = modern_request;
+  truncated.pop_back();
+  require(!eq2::protocol::parse_play_character_request(truncated, 284).has_value(),
+          "truncated modern play request is rejected");
+}
+
+void delete_character_request_and_response_packets_match_legacy_login_layouts() {
+  const eq2::protocol::DeleteCharacterRequest request{
+      .character_id = 1001,
+      .server_id = 77,
+      .unknown = 0,
+      .character_name = "Alys",
+  };
+
+  const auto request_payload = eq2::protocol::encode_delete_character_request_fixture(request);
+  const std::vector<std::uint8_t> expected_request{
+      0xe9, 0x03, 0x00, 0x00,
+      0x4d, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x04, 0x00,
+      'A', 'l', 'y', 's',
+  };
+  require(request_payload == expected_request,
+          "delete request stores character id, server id, unknown int32, and character name");
+
+  const auto parsed_request = eq2::protocol::parse_delete_character_request(request_payload);
+  require(parsed_request.has_value(), "delete request parses");
+  require_eq(parsed_request->character_id, request.character_id,
+             "delete request character id decodes");
+  require_eq(parsed_request->server_id, request.server_id, "delete request server id decodes");
+  require_eq(parsed_request->character_name, request.character_name,
+             "delete request character name decodes");
+
+  const eq2::protocol::DeleteCharacterResponse response{
+      .response = 1,
+      .server_id = 77,
+      .character_id = 1001,
+      .account_id = 42,
+      .character_name = "Alys",
+      .max_characters = 10,
+  };
+
+  const auto response_payload = eq2::protocol::encode_delete_character_response_payload(response);
+  const std::vector<std::uint8_t> expected_response{
+      0x01,
+      0x4d, 0x00, 0x00, 0x00,
+      0xe9, 0x03, 0x00, 0x00,
+      0x2a, 0x00, 0x00, 0x00,
+      0x04, 0x00,
+      'A', 'l', 'y', 's',
+      0x0a, 0x00, 0x00, 0x00,
+  };
+  require(response_payload == expected_response,
+          "delete response stores response code, ids, character name, and max character count");
+
+  const auto parsed_response =
+      eq2::protocol::decode_delete_character_response_payload(response_payload);
+  require(parsed_response.has_value(), "delete response decodes");
+  require_eq(parsed_response->response, response.response, "delete response code decodes");
+  require_eq(parsed_response->account_id, response.account_id, "delete response account id decodes");
+  require_eq(parsed_response->max_characters, response.max_characters,
+             "delete response max character count decodes");
+
+  auto truncated = request_payload;
+  truncated.pop_back();
+  require(!eq2::protocol::parse_delete_character_request(truncated).has_value(),
+          "truncated delete request is rejected");
+}
+
 }  // namespace
 
 int main() {
   packet_reader_and_writer_handle_bounds();
+  packet_field_helpers_handle_eq2_length_prefixed_strings();
   session_request_round_trips_legacy_wire_order();
   session_response_round_trips_legacy_wire_order();
   protocol_packet_headers_match_legacy_wire_order();
@@ -381,6 +741,12 @@ int main() {
   transform_policy_marks_compression_encryption_boundaries();
   interserver_packet_framing_matches_legacy_tcp_server_packets();
   server_ls_info_payload_decodes_fixed_legacy_fields();
+  user_to_world_payloads_preserve_login_world_handoff_fields();
+  legacy_login_request_decodes_length_prefixed_credentials_and_version();
+  login_by_num_request_decodes_legacy_and_extended_world_entry_layouts();
+  login_request_version_fallbacks_match_phase1_inventory();
+  play_character_request_and_response_packets_match_legacy_login_layouts();
+  delete_character_request_and_response_packets_match_legacy_login_layouts();
 
   if (failures != 0) {
     std::cerr << failures << " protocol assertion(s) failed\n";

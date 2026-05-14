@@ -34,6 +34,13 @@ Protocol owns packet structure, opcode mapping, stream framing rules that are pr
 - Updated source2 world-registration characterization to parse raw interserver LSInfo/keepalive bytes through protocol framing before applying login registration policy.
 - Moved login-bound protocol characterization coverage under `source2/login/tests` so the protocol test directory remains dependency-clean.
 - Confirmed the Debug source2 build and all current CTest tests pass after the second Phase 4 slice.
+- Moved legacy login request packet parsing and login/world request-version fallback helpers into `eq2::protocol`, leaving `eq2::login` as a compatibility/policy wrapper.
+- Added protocol-owned world-entry `LoginByNumRequest` parsing for the legacy and 1208 layouts, including the retry behavior described in the Phase 1 protocol inventory.
+- Added protocol-owned `ServerOP_UsertoWorldReq` and `ServerOP_UsertoWorldResp` payload encode/decode helpers for the login-to-world character handoff boundary.
+- Added shared protocol field helpers for EQ2 8-bit and 16-bit length-prefixed strings and moved login request parsing onto those helpers.
+- Added protocol-owned `LS_PlayRequest` and `LS_PlayResponse` payload helpers for the client-facing play-character boundary.
+- Added protocol-owned `LS_DeleteCharacterRequest` and `LS_DeleteCharacterResponse` payload helpers for the character-select delete boundary.
+- Confirmed the Debug source2 build and all current CTest tests pass after the login request, world-entry request, character-handoff, play-character, and delete-character protocol slice.
 
 ## Exit Criteria
 
