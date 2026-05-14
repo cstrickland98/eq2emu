@@ -35,6 +35,31 @@ The migration should be incremental:
 4. Rebuild one vertical slice at a time.
 5. Retire legacy code only after its replacement is verified.
 
+## Readability Standard
+
+Source2 should be written for maintainers who understand EQ2Emu behavior better than modern C++ details. Readable code is a migration requirement, not polish to add later.
+
+Prefer:
+
+- Small types with names that describe the game or protocol concept they represent.
+- Short functions that do one visible step in the flow.
+- Explicit enum values instead of magic numbers when a value has meaning.
+- Plain data structs for inputs and outputs before adding classes with hidden state.
+- Early returns for failure paths when they make the normal path easier to follow.
+- Descriptive variable names over abbreviations copied from legacy code.
+- Comments that explain legacy quirks, wire-format oddities, ownership rules, or non-obvious tradeoffs.
+- Tests that read like examples of the expected behavior.
+
+Avoid:
+
+- Clever template or macro-heavy code unless it removes real duplication.
+- Deep inheritance trees for ordinary data flow.
+- Functions that both parse, validate, mutate state, and send packets.
+- Passing raw pointers where references, values, `std::optional`, or ownership types communicate intent better.
+- Reusing unclear legacy names in source2 unless the name is part of the client protocol or database schema.
+
+When source2 preserves strange legacy behavior, keep that behavior isolated behind a clearly named helper and pin it with a characterization test. The test name should explain the behavior in plain language.
+
 ## Source2 Module Layout
 
 The planned module tree is:

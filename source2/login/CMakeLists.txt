@@ -28,4 +28,32 @@ if(BUILD_TESTING)
   add_test(NAME eq2_login_protocol_characterization_tests
     COMMAND eq2_login_protocol_characterization_tests
   )
+
+  add_executable(eq2_login_characterization_tests
+    tests/login_characterization_tests.cpp
+  )
+
+  target_link_libraries(eq2_login_characterization_tests PRIVATE
+    eq2::login
+  )
+
+  eq2_target_defaults(eq2_login_characterization_tests)
+
+  add_test(NAME eq2_login_characterization_tests
+    COMMAND eq2_login_characterization_tests
+  )
+
+  add_executable(eq2_world_registration_characterization_tests
+    tests/world_registration_characterization_tests.cpp
+  )
+
+  target_link_libraries(eq2_world_registration_characterization_tests PRIVATE
+    eq2::login
+  )
+
+  eq2_target_defaults(eq2_world_registration_characterization_tests)
+
+  add_test(NAME eq2_world_registration_characterization_tests
+    COMMAND eq2_world_registration_characterization_tests
+  )
 endif()

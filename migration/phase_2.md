@@ -29,6 +29,8 @@ Add focused tests around protocol, login, world registration, character select, 
 - Added opcode version range lookup coverage matching legacy `GetOpcodeVersion` behavior.
 - Added opcode table coverage for missing opcode sentinel and replacement behavior.
 - Added login/world request struct version fallback coverage for the Phase 1 login and world entry flows.
+- Added login authentication success, invalid password, bad version, account creation, and duplicate-session characterization coverage.
+- Added world registration admission coverage for unauthenticated packet rejection, valid `ServerOP_LSInfo`, bad versions, invalid world accounts, disabled accounts, and debug world type handling.
 
 ## Exit Criteria
 
