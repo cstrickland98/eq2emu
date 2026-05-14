@@ -13,3 +13,19 @@ target_link_libraries(eq2_login INTERFACE
 )
 
 eq2_target_defaults(eq2_login)
+
+if(BUILD_TESTING)
+  add_executable(eq2_login_protocol_characterization_tests
+    ../protocol/tests/protocol_characterization_tests.cpp
+  )
+
+  target_link_libraries(eq2_login_protocol_characterization_tests PRIVATE
+    eq2::login
+  )
+
+  eq2_target_defaults(eq2_login_protocol_characterization_tests)
+
+  add_test(NAME eq2_login_protocol_characterization_tests
+    COMMAND eq2_login_protocol_characterization_tests
+  )
+endif()

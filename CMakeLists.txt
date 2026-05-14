@@ -12,6 +12,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(Eq2CompilerOptions)
 include(Eq2Dependencies)
+include(CTest)
 
 if(EQ2EMU_BUILD_SOURCE2)
   add_subdirectory(source2)

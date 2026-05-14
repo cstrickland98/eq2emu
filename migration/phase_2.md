@@ -1,6 +1,6 @@
 # Phase 2: Characterization Tests
 
-Status: planned.
+Status: in progress.
 
 ## Purpose
 
@@ -21,9 +21,17 @@ Add focused tests around protocol, login, world registration, character select, 
 - Database repository tests using a fake query layer or isolated test database.
 - Golden packet fixtures where available.
 
+## Progress
+
+- Added CTest wiring for source2 characterization tests.
+- Added protocol/session encode and decode characterization coverage for legacy session request and response wire fields.
+- Added protocol opcode prefix characterization for legacy one-byte protocol opcodes.
+- Added opcode version range lookup coverage matching legacy `GetOpcodeVersion` behavior.
+- Added opcode table coverage for missing opcode sentinel and replacement behavior.
+- Added login/world request struct version fallback coverage for the Phase 1 login and world entry flows.
+
 ## Exit Criteria
 
 - Tests can run without starting the full legacy server.
 - Tests document expected legacy behavior.
 - Source2 protocol and login work can be validated against these tests.
-
