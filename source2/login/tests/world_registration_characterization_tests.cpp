@@ -1,10 +1,13 @@
 #include <eq2/login/world_registration.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -116,6 +119,28 @@ auto repository_with_valid_account() -> FakeWorldAccountRepository {
   return accounts;
 }
 
+auto encode_ls_info_payload(const eq2::login::WorldRegistrationPacket& packet)
+    -> std::vector<std::uint8_t> {
+  eq2::protocol::PacketWriter writer;
+  const auto append_fixed = [&writer](std::string_view value, std::size_t size) {
+    std::vector<std::uint8_t> bytes(size, 0);
+    const auto copy_size = std::min(value.size(), size);
+    std::copy_n(reinterpret_cast<const std::uint8_t*>(value.data()), copy_size, bytes.data());
+    writer.append_bytes(bytes);
+  };
+
+  append_fixed(packet.world_name, 201);
+  append_fixed(packet.address, 250);
+  append_fixed(packet.account, 31);
+  append_fixed(packet.password, 256);
+  append_fixed(packet.protocol_version, 25);
+  append_fixed(packet.server_version, 64);
+  writer.append_u8(static_cast<std::uint8_t>(packet.server_type));
+  writer.append_u32_le(1234);
+
+  return std::move(writer).into_bytes();
+}
+
 void unauthenticated_connections_must_send_ls_info_first() {
   auto accounts = repository_with_valid_account();
 
@@ -190,6 +215,36 @@ void debug_world_type_is_preserved() {
   require(result.world->is_development_server, "debug world type marks development server flag");
 }
 
+void raw_interserver_ls_info_packet_feeds_registration() {
+  auto accounts = repository_with_valid_account();
+  const auto payload = encode_ls_info_payload(valid_ls_info_packet());
+  const auto bytes = eq2::protocol::encode_interserver_packet(eq2::login::kServerOpLsInfo, payload);
+  require(bytes.has_value(), "raw LSInfo packet encodes");
+
+  const auto packet = eq2::login::parse_world_registration_packet(*bytes);
+  require(packet.has_value(), "raw LSInfo packet parses through protocol framing");
+
+  const auto result = eq2::login::register_world_server(*packet, false, accounts);
+  require_eq(result.status, eq2::login::WorldRegistrationStatus::accepted,
+             "parsed raw LSInfo packet registers the world");
+  require(result.world.has_value(), "parsed raw LSInfo carries registered world");
+  require_eq(result.world->address, std::string("127.0.0.1"), "parsed raw LSInfo preserves address");
+}
+
+void raw_interserver_non_ls_info_keeps_authentication_gate() {
+  auto accounts = repository_with_valid_account();
+  const std::array<std::uint8_t, 1> payload{0};
+  const auto bytes = eq2::protocol::encode_interserver_packet(eq2::login::kServerOpKeepAlive, payload);
+  require(bytes.has_value(), "raw keepalive packet encodes");
+
+  const auto packet = eq2::login::parse_world_registration_packet(*bytes);
+  require(packet.has_value(), "raw non-LSInfo packet parses through protocol framing");
+
+  const auto result = eq2::login::register_world_server(*packet, false, accounts);
+  require_eq(result.status, eq2::login::WorldRegistrationStatus::rejected_not_authenticated,
+             "parsed raw non-LSInfo packet still hits authentication gate");
+}
+
 }  // namespace
 
 int main() {
@@ -198,6 +253,8 @@ int main() {
   invalid_protocol_or_server_version_is_bad_version();
   invalid_account_or_ban_is_bad_password();
   debug_world_type_is_preserved();
+  raw_interserver_ls_info_packet_feeds_registration();
+  raw_interserver_non_ls_info_keeps_authentication_gate();
 
   if (failures != 0) {
     std::cerr << failures << " characterization assertion(s) failed\n";

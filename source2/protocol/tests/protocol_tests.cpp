@@ -1,5 +1,7 @@
 #include <eq2/protocol/application_packet.h>
 #include <eq2/protocol/combined_packet.h>
+#include <eq2/protocol/interserver_packet.h>
+#include <eq2/protocol/login_world.h>
 #include <eq2/protocol/opcode_table.h>
 #include <eq2/protocol/opcode_version.h>
 #include <eq2/protocol/packet_buffer.h>
@@ -292,6 +294,79 @@ void transform_policy_marks_compression_encryption_boundaries() {
   require(!app_combined_crc->requires_crc, "legacy app-combined packet bypasses crc");
 }
 
+void interserver_packet_framing_matches_legacy_tcp_server_packets() {
+  const std::array<std::uint8_t, 3> payload{0xaa, 0xbb, 0xcc};
+  const auto bytes = eq2::protocol::encode_interserver_packet(eq2::protocol::kServerOpLsInfo, payload);
+  const std::vector<std::uint8_t> expected{
+      0x0a, 0x00, 0x00, 0x00,
+      0x00,
+      0x00, 0x10,
+      0xaa, 0xbb, 0xcc,
+  };
+
+  require(bytes.has_value(), "interserver packet encodes");
+  require(*bytes == expected, "interserver packet stores size/opcode in legacy little-endian layout");
+
+  const auto decoded = eq2::protocol::decode_interserver_packet(*bytes);
+  require(decoded.has_value(), "interserver packet decodes");
+  require_eq(decoded->opcode, eq2::protocol::kServerOpLsInfo, "interserver opcode round trip");
+  require(!decoded->compressed, "interserver packet defaults to uncompressed");
+  require(!decoded->destination.has_value(), "interserver packet defaults to no relay destination");
+  require(span_to_vector(decoded->payload) == span_to_vector(payload), "interserver payload round trip");
+
+  const eq2::protocol::InterserverPacketEncodeOptions options{
+      .compressed = true,
+      .inflated_size = 512,
+      .destination = 77,
+  };
+  const auto relayed = eq2::protocol::encode_interserver_packet(0x2000, payload, options);
+  require(relayed.has_value(), "interserver packet encodes compressed relay metadata");
+
+  const auto decoded_relay = eq2::protocol::decode_interserver_packet(*relayed);
+  require(decoded_relay.has_value(), "interserver packet decodes compressed relay metadata");
+  require(decoded_relay->compressed, "interserver compressed flag round trips");
+  require_eq(decoded_relay->inflated_size, static_cast<std::uint32_t>(512),
+             "interserver inflated size round trips");
+  require(decoded_relay->destination.has_value(), "interserver destination flag round trips");
+  require_eq(*decoded_relay->destination, static_cast<std::int32_t>(77),
+             "interserver destination id round trips");
+
+  auto truncated = *bytes;
+  truncated.pop_back();
+  require(!eq2::protocol::decode_interserver_packet(truncated).has_value(),
+          "interserver packet rejects size mismatch");
+}
+
+void server_ls_info_payload_decodes_fixed_legacy_fields() {
+  eq2::protocol::PacketWriter writer;
+  const auto append_fixed = [&writer](std::string_view value, std::size_t size) {
+    std::vector<std::uint8_t> bytes(size, 0);
+    const auto copy_size = std::min(value.size(), size);
+    std::copy_n(reinterpret_cast<const std::uint8_t*>(value.data()), copy_size, bytes.data());
+    writer.append_bytes(bytes);
+  };
+
+  append_fixed("Public World", 201);
+  append_fixed("127.0.0.1", 250);
+  append_fixed("world-account", 31);
+  append_fixed("secret", 256);
+  append_fixed("0.5.0", 25);
+  append_fixed("2026.05.14", 64);
+  writer.append_u8(4);
+  writer.append_u32_le(1234);
+
+  const auto info = eq2::protocol::decode_server_ls_info_payload(writer.bytes());
+  require(info.has_value(), "server LSInfo payload decodes");
+  require_eq(info->world_name, std::string_view("Public World"), "LSInfo world name decodes");
+  require_eq(info->address, std::string_view("127.0.0.1"), "LSInfo address decodes");
+  require_eq(info->account, std::string_view("world-account"), "LSInfo account decodes");
+  require_eq(info->password, std::string_view("secret"), "LSInfo password decodes");
+  require_eq(info->protocol_version, std::string_view("0.5.0"), "LSInfo protocol version decodes");
+  require_eq(info->server_version, std::string_view("2026.05.14"), "LSInfo server version decodes");
+  require_eq(info->server_type, static_cast<std::uint8_t>(4), "LSInfo server type decodes");
+  require_eq(info->database_version, static_cast<std::uint32_t>(1234), "LSInfo DB version decodes");
+}
+
 }  // namespace
 
 int main() {
@@ -304,6 +379,8 @@ int main() {
   versioned_packet_registry_resolves_client_versions();
   combined_packet_framing_preserves_legacy_length_prefixes();
   transform_policy_marks_compression_encryption_boundaries();
+  interserver_packet_framing_matches_legacy_tcp_server_packets();
+  server_ls_info_payload_decodes_fixed_legacy_fields();
 
   if (failures != 0) {
     std::cerr << failures << " protocol assertion(s) failed\n";

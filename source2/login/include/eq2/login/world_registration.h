@@ -2,14 +2,18 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
+#include <eq2/protocol/interserver_packet.h>
+#include <eq2/protocol/login_world.h>
+
 namespace eq2::login {
 
-inline constexpr std::uint16_t kServerOpKeepAlive = 0x0001;
-inline constexpr std::uint16_t kServerOpLsInfo = 0x1000;
-inline constexpr std::size_t kServerLsInfoPayloadSize = 832;
+inline constexpr auto kServerOpKeepAlive = eq2::protocol::kServerOpKeepAlive;
+inline constexpr auto kServerOpLsInfo = eq2::protocol::kServerOpLsInfo;
+inline constexpr auto kServerLsInfoPayloadSize = eq2::protocol::kServerLsInfoPayloadSize;
 inline constexpr std::string_view kLegacyInterserverProtocolVersion = "0.5.0";
 
 enum class WorldServerType : std::uint8_t {
@@ -52,6 +56,38 @@ struct WorldRegistrationResult {
   WorldRegistrationStatus status = WorldRegistrationStatus::ignored;
   std::optional<RegisteredWorld> world;
 };
+
+inline auto parse_world_registration_packet(std::span<const std::uint8_t> bytes)
+    -> std::optional<WorldRegistrationPacket> {
+  const auto frame = eq2::protocol::decode_interserver_packet(bytes);
+  if (!frame.has_value() || frame->compressed) {
+    return std::nullopt;
+  }
+
+  if (frame->opcode != kServerOpLsInfo) {
+    return WorldRegistrationPacket{
+        .opcode = frame->opcode,
+        .payload_size = frame->payload.size(),
+    };
+  }
+
+  const auto info = eq2::protocol::decode_server_ls_info_payload(frame->payload);
+  if (!info.has_value()) {
+    return std::nullopt;
+  }
+
+  return WorldRegistrationPacket{
+      .opcode = frame->opcode,
+      .payload_size = frame->payload.size(),
+      .world_name = info->world_name,
+      .address = info->address,
+      .account = info->account,
+      .password = info->password,
+      .protocol_version = info->protocol_version,
+      .server_version = info->server_version,
+      .server_type = static_cast<WorldServerType>(info->server_type),
+  };
+}
 
 template <typename WorldAccountRepository>
 auto register_world_server(const WorldRegistrationPacket& packet,
