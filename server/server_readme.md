@@ -104,7 +104,8 @@ Configuration files necessary to operate the server:
 ### `login`
 
 - Handles login from EverQuest II clients.
-- Clients use `cl_ls_address` in `eq2_default.ini` to connect.
+- Clients use `cl_ls_address <host>` in `eq2_default.ini` to connect when the
+  login server is on the default port, for example `cl_ls_address 127.0.0.1`.
 - Default UDP Port: `9100`.
 - Configured via `LoginConfig -> ServerPort` in [`server_config.json`](https://github.com/emagi/eq2emu/blob/main/server/server_config.json.example).
 

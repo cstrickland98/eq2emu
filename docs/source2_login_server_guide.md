@@ -124,10 +124,12 @@ cl_ls_address <source2-login-host-or-ip>
 ```
 
 Use `127.0.0.1` only when the client is running on the same machine as the login
-server. For another PC on the LAN, use the source2 host's LAN IP. For internet
+server, for example `cl_ls_address 127.0.0.1`. For another PC on the LAN, use
+the source2 host's LAN IP, for example `cl_ls_address 192.168.1.41`. For internet
 clients, use the public DNS name or public IP that forwards UDP `9100` to the
-source2 host. Keep the login server on port `9100` unless your client profile or
-launcher supports an explicit login-port override.
+source2 host. Keep the login server on port `9100`; some clients can parse an
+explicit `host:port`, but the legacy client works with the host/IP alone when
+the server uses the default port.
 
 Start the client and log in with an account from `eq2ls.account`. If the client
 reaches login but shows no worlds, the login server is reachable and no world

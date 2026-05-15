@@ -51,6 +51,47 @@ auto span_to_vector(std::span<const std::uint8_t> bytes) -> std::vector<std::uin
   return {bytes.begin(), bytes.end()};
 }
 
+class TestLegacyRc4 {
+ public:
+  explicit TestLegacyRc4(std::uint64_t key) {
+    for (std::size_t i = 0; i < state_.size(); ++i) {
+      state_[i] = static_cast<std::uint8_t>(i);
+    }
+
+    auto key_bytes = std::array<std::uint8_t, 8>{};
+    for (std::size_t i = 0; i < key_bytes.size(); ++i) {
+      key_bytes[i] = static_cast<std::uint8_t>((key >> (i * 8U)) & 0xffU);
+    }
+
+    std::size_t key_index = 0;
+    std::size_t state_index = 0;
+    for (std::size_t i = 0; i < state_.size(); ++i) {
+      const auto temp = state_[i];
+      state_index = (state_index + key_bytes[key_index] + temp) & 0xffU;
+      state_[i] = state_[state_index];
+      state_[state_index] = temp;
+      key_index = (key_index + 1U) & 7U;
+    }
+  }
+
+  void cypher(std::span<std::uint8_t> bytes) {
+    for (auto& byte : bytes) {
+      ++x_;
+      const auto key_val_1 = state_[x_];
+      y_ = static_cast<std::uint8_t>(y_ + key_val_1);
+      const auto key_val_2 = state_[y_];
+      state_[x_] = key_val_2;
+      state_[y_] = key_val_1;
+      byte ^= state_[(key_val_1 + key_val_2) & 0xffU];
+    }
+  }
+
+ private:
+  std::array<std::uint8_t, 256> state_{};
+  std::uint8_t x_ = 0;
+  std::uint8_t y_ = 0;
+};
+
 void packet_reader_and_writer_handle_bounds() {
   eq2::protocol::PacketWriter writer;
   writer.append_u8(0xaa);
@@ -1011,6 +1052,77 @@ void stream_pipeline_handles_session_handshake_and_app_dispatch() {
           "one-byte stream pipeline decodes empty sequenced app packet");
   require_eq(one_byte_result.events.front().app_packet->opcode, static_cast<std::uint16_t>(0x07),
              "one-byte stream pipeline preserves empty sequenced app opcode");
+
+  auto key_pipeline = eq2::protocol::StreamPipeline(eq2::protocol::StreamPipelineOptions{
+      .application_opcode_width = eq2::protocol::ApplicationOpcodeWidth::one_byte});
+  const auto key_handshake = key_pipeline.receive_datagram(session_request);
+  require_eq(key_handshake.events.size(), static_cast<std::size_t>(1),
+             "key stream pipeline accepts session request");
+
+  auto client_stats = std::vector<std::uint8_t>(38, 0);
+  client_stats[0] = 0x34;
+  client_stats[1] = 0x12;
+  const auto server_key_request =
+      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpServerKeyRequest,
+                                            client_stats);
+  const auto key_request_result = key_pipeline.receive_datagram(server_key_request);
+  require_eq(key_request_result.events.size(), static_cast<std::size_t>(1),
+             "stream pipeline emits key-request event");
+  require_eq(key_request_result.events.front().type,
+             eq2::protocol::StreamEventType::server_key_requested,
+             "stream pipeline identifies legacy server key request");
+  require_eq(key_request_result.outbound.size(), static_cast<std::size_t>(1),
+             "stream pipeline replies to server key request with session stats");
+  const auto stats_response = eq2::protocol::decode_protocol_packet(
+      eq2::protocol::strip_legacy_crc_if_present(key_request_result.outbound.front(),
+                                                 0x33624702));
+  require(stats_response.has_value() &&
+              stats_response->opcode == eq2::protocol::kOpSessionStatResponse,
+          "stream pipeline session stats response uses the legacy opcode");
+  require(stats_response.has_value() && stats_response->payload.size() == client_stats.size(),
+          "stream pipeline preserves session stats response size");
+  if (stats_response.has_value() && stats_response->payload.size() >= 2) {
+    require_eq(stats_response->payload[0], static_cast<std::uint8_t>(0x34),
+               "stream pipeline preserves session stats request id byte 0");
+    require_eq(stats_response->payload[1], static_cast<std::uint8_t>(0x12),
+               "stream pipeline preserves session stats request id byte 1");
+  }
+
+  constexpr auto rc4_key = std::uint64_t{0x0102030405060708ULL};
+  auto rsa_packet_payload = std::vector<std::uint8_t>(69, 0);
+  rsa_packet_payload[1] = 2;
+  for (std::size_t i = 0; i < 8; ++i) {
+    rsa_packet_payload[rsa_packet_payload.size() - 8 + i] =
+        static_cast<std::uint8_t>((rc4_key >> ((7U - i) * 8U)) & 0xffU);
+  }
+  const auto rsa_result = key_pipeline.receive_datagram(
+      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket, rsa_packet_payload));
+  require(rsa_result.events.empty(), "stream pipeline consumes RSA key packet internally");
+  require_eq(rsa_result.outbound.size(), static_cast<std::size_t>(1),
+             "stream pipeline ACKs RSA key packet");
+
+  auto encrypted_login = std::vector<std::uint8_t>{0x07, 0xaa};
+  TestLegacyRc4 client_cipher(~rc4_key);
+  auto warmup = std::array<std::uint8_t, 20>{};
+  client_cipher.cypher(warmup);
+  client_cipher.cypher(encrypted_login);
+  eq2::protocol::PacketWriter encrypted_writer;
+  encrypted_writer.append_u16_be(3);
+  encrypted_writer.append_bytes(encrypted_login);
+  const auto encrypted_result = key_pipeline.receive_datagram(
+      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket,
+                                            encrypted_writer.bytes()));
+  require_eq(encrypted_result.events.size(), static_cast<std::size_t>(1),
+             "stream pipeline emits decrypted encrypted app packet");
+  require(encrypted_result.events.front().app_packet.has_value(),
+          "stream pipeline carries decrypted encrypted app packet");
+  if (encrypted_result.events.front().app_packet.has_value()) {
+    require_eq(encrypted_result.events.front().app_packet->opcode, static_cast<std::uint16_t>(0x07),
+               "stream pipeline decrypts encrypted app opcode");
+    require_eq(encrypted_result.events.front().app_packet->payload.front(),
+               static_cast<std::uint8_t>(0xaa),
+               "stream pipeline decrypts encrypted app payload");
+  }
 
   const auto outbound_app =
       eq2::protocol::encode_application_packet(0x1235, std::array<std::uint8_t, 1>{0x01});

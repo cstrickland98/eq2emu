@@ -146,6 +146,7 @@ void apply_environment_config(eq2::core::MapConfig& config) {
   apply_env(config, "EQ2_LOGIN_ALL_WORLDS_REQUEST_OPCODE", "login.all_worlds_request_opcode");
   apply_env(config, "EQ2_LOGIN_CHARACTERS_REQUEST_OPCODE", "login.characters_request_opcode");
   apply_env(config, "EQ2_LOGIN_CHARACTERS_REPLY_OPCODE", "login.characters_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_KEY_REQUEST_OPCODE", "login.key_request_opcode");
 
   apply_env(config, "EQ2_DB_HOST", "db.host");
   apply_env(config, "EQ2_DB_PORT", "db.port");
@@ -193,6 +194,7 @@ void print_help() {
       << "  --login-all-worlds-request-opcode <n> OP_AllWSDescRequestMsg EQ opcode.\n"
       << "  --login-characters-request-opcode <n> OP_AllCharactersDescRequestMsg EQ opcode.\n"
       << "  --login-characters-reply-opcode <n> OP_AllCharactersDescReplyMsg EQ opcode.\n"
+      << "  --login-key-request-opcode <n> OP_WSLoginRequestMsg EQ opcode.\n"
       << "  --db-host <host>            MariaDB host.\n"
       << "  --db-port <port>            MariaDB port.\n"
       << "  --db-name <name>            MariaDB login database name.\n"
@@ -216,7 +218,7 @@ void print_help() {
       << "  EQ2_LOGIN_REQUEST_OPCODE,\n"
       << "  EQ2_LOGIN_REPLY_OPCODE, EQ2_LOGIN_WORLD_LIST_OPCODE,\n"
       << "  EQ2_LOGIN_ALL_WORLDS_REQUEST_OPCODE, EQ2_LOGIN_CHARACTERS_REQUEST_OPCODE,\n"
-      << "  EQ2_LOGIN_CHARACTERS_REPLY_OPCODE,\n"
+      << "  EQ2_LOGIN_CHARACTERS_REPLY_OPCODE, EQ2_LOGIN_KEY_REQUEST_OPCODE,\n"
       << "  EQ2_LOGIN_USERNAME, EQ2_LOGIN_PASSWORD,\n"
       << "  EQ2_DB_HOST, EQ2_DB_PORT, EQ2_LOGIN_DB_NAME, EQ2_DB_NAME,\n"
       << "  EQ2_DB_USER, EQ2_DB_PASSWORD, EQ2_DB_TLS.\n";
@@ -358,6 +360,12 @@ auto parse_arguments(int argc, char** argv) -> eq2::core::Result<AppOptions> {
         return eq2::core::Result<AppOptions>::failure({.message = "--login-characters-reply-opcode requires a value"});
       }
       add_key_value_override(options, "login.characters_reply_opcode", std::move(*value));
+    } else if (arg == "--login-key-request-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-key-request-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.key_request_opcode", std::move(*value));
     } else if (arg == "--db-host") {
       auto value = require_value(arg);
       if (!value) {
@@ -576,7 +584,8 @@ auto validate_live_login_options(const eq2::login::LiveLoginOptions& options)
   if (options.opcode_width == eq2::protocol::ApplicationOpcodeWidth::one_byte &&
       (options.login_request_opcode > 0xffU || options.login_reply_opcode > 0xffU ||
        options.world_list_reply_opcode > 0xffU || options.all_worlds_request_opcode > 0xffU ||
-       options.characters_request_opcode > 0xffU || options.characters_reply_opcode > 0xffU)) {
+       options.characters_request_opcode > 0xffU || options.characters_reply_opcode > 0xffU ||
+       options.key_request_opcode > 0xffU)) {
     return "one-byte login opcode width requires all configured login opcodes to be <= 255";
   }
 
@@ -640,6 +649,9 @@ auto load_live_login_options(const eq2::core::ConfigProvider& config,
       {"login.characters_request_opcode", "login.character_list_request_opcode"},
       "login characters request opcode",
       options.characters_request_opcode);
+  auto key_request = read_opcode({"login.key_request_opcode", "login.ws_login_request_opcode"},
+                                 "login key request opcode",
+                                 options.key_request_opcode);
   if (!request.has_value()) {
     return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(request.error());
   }
@@ -658,6 +670,9 @@ auto load_live_login_options(const eq2::core::ConfigProvider& config,
   if (!characters_request.has_value()) {
     return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(characters_request.error());
   }
+  if (!key_request.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(key_request.error());
+  }
 
   options.login_request_opcode = request.value();
   options.login_reply_opcode = reply.value();
@@ -665,6 +680,7 @@ auto load_live_login_options(const eq2::core::ConfigProvider& config,
   options.all_worlds_request_opcode = all_worlds_request.value();
   options.characters_request_opcode = characters_request.value();
   options.characters_reply_opcode = characters_reply.value();
+  options.key_request_opcode = key_request.value();
 
   if (validate_opcode_range) {
     if (auto error = validate_live_login_options(options)) {
@@ -726,6 +742,7 @@ auto load_live_login_options_from_database(const eq2::core::ConfigProvider& conf
   live_options.all_worlds_request_opcode = opcodes.value().all_worlds_request_opcode;
   live_options.characters_request_opcode = opcodes.value().characters_request_opcode;
   live_options.characters_reply_opcode = opcodes.value().characters_reply_opcode;
+  live_options.key_request_opcode = opcodes.value().key_request_opcode;
   if (auto error = validate_live_login_options(live_options)) {
     return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(eq2::core::Error{
         .code = eq2::core::ErrorCode::invalid_argument,
@@ -1223,7 +1240,8 @@ auto run_login_db_check(const eq2::core::ConfigProvider& config, const AppOption
               << " world_list_opcode=" << opcodes.value().world_list_opcode
               << " all_worlds_request_opcode=" << opcodes.value().all_worlds_request_opcode
               << " characters_request_opcode=" << opcodes.value().characters_request_opcode
-              << " characters_reply_opcode=" << opcodes.value().characters_reply_opcode;
+              << " characters_reply_opcode=" << opcodes.value().characters_reply_opcode
+              << " key_request_opcode=" << opcodes.value().key_request_opcode;
     std::cout << '\n';
     return EXIT_SUCCESS;
   }
@@ -1250,7 +1268,8 @@ auto run_login_db_check(const eq2::core::ConfigProvider& config, const AppOption
             << " world_list_opcode=" << opcodes.value().world_list_opcode
             << " all_worlds_request_opcode=" << opcodes.value().all_worlds_request_opcode
             << " characters_request_opcode=" << opcodes.value().characters_request_opcode
-            << " characters_reply_opcode=" << opcodes.value().characters_reply_opcode;
+            << " characters_reply_opcode=" << opcodes.value().characters_reply_opcode
+            << " key_request_opcode=" << opcodes.value().key_request_opcode;
   std::cout << '\n';
 
   return authenticated.reply_code == eq2::login::LoginReplyCode::accepted ? EXIT_SUCCESS

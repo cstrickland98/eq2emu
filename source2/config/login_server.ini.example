@@ -19,6 +19,7 @@ world_list_opcode = 0x1236
 all_worlds_request_opcode = 0x1237
 characters_request_opcode = 0x1238
 characters_reply_opcode = 0x1239
+key_request_opcode = 0x0002
 
 [db]
 host = 127.0.0.1

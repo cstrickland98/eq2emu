@@ -60,6 +60,7 @@ struct LoginOpcodeSet {
   std::uint16_t all_worlds_request_opcode = 0;
   std::uint16_t characters_request_opcode = 0;
   std::uint16_t characters_reply_opcode = 0;
+  std::uint16_t key_request_opcode = 0;
 };
 
 struct OpcodeVersionRange {
@@ -120,7 +121,7 @@ inline auto load_login_opcode_set(QueryConnection& connection,
              "where ? between version_range1 and version_range2 "
              "and name in ('OP_LoginRequestMsg', 'OP_LoginReplyMsg', 'OP_WorldListMsg', "
              "'OP_AllWSDescRequestMsg', 'OP_AllCharactersDescRequestMsg', "
-             "'OP_AllCharactersDescReplyMsg') "
+             "'OP_AllCharactersDescReplyMsg', 'OP_WSLoginRequestMsg') "
              "order by version_range1, id",
       .parameters = {std::to_string(client_version)},
   });
@@ -138,6 +139,7 @@ inline auto load_login_opcode_set(QueryConnection& connection,
   auto has_all_worlds_request = false;
   auto has_characters_request = false;
   auto has_characters_reply = false;
+  auto has_key_request = false;
 
   for (const auto& row : result.value().rows) {
     const auto name = row.get("name").value_or("");
@@ -168,6 +170,9 @@ inline auto load_login_opcode_set(QueryConnection& connection,
     } else if (name == "OP_AllCharactersDescReplyMsg") {
       opcodes.characters_reply_opcode = opcode;
       has_characters_reply = true;
+    } else if (name == "OP_WSLoginRequestMsg") {
+      opcodes.key_request_opcode = opcode;
+      has_key_request = true;
     }
   }
 
@@ -189,6 +194,9 @@ inline auto load_login_opcode_set(QueryConnection& connection,
   }
   if (!has_characters_reply) {
     missing += " OP_AllCharactersDescReplyMsg";
+  }
+  if (!has_key_request) {
+    missing += " OP_WSLoginRequestMsg";
   }
   if (!missing.empty()) {
     return eq2::core::Result<LoginOpcodeSet>::failure(eq2::core::Error{

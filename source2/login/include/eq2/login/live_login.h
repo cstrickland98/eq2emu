@@ -29,6 +29,7 @@ inline constexpr std::uint16_t kWorldListReplyAppOpcode = 0x1236;
 inline constexpr std::uint16_t kAllWorldsRequestAppOpcode = 0x1237;
 inline constexpr std::uint16_t kCharactersRequestAppOpcode = 0x1238;
 inline constexpr std::uint16_t kCharactersReplyAppOpcode = 0x1239;
+inline constexpr std::uint16_t kKeyRequestAppOpcode = 0x0002;
 
 enum class LiveLoginEventType {
   transport_accepted,
@@ -37,6 +38,7 @@ enum class LiveLoginEventType {
   login_rejected,
   world_registered,
   world_rejected,
+  key_requested,
   malformed,
   unsupported,
   disconnected,
@@ -62,6 +64,7 @@ struct LiveLoginOptions {
   std::uint16_t characters_reply_opcode = kCharactersReplyAppOpcode;
   eq2::protocol::ApplicationOpcodeWidth opcode_width =
       eq2::protocol::ApplicationOpcodeWidth::two_bytes;
+  std::uint16_t key_request_opcode = kKeyRequestAppOpcode;
 };
 
 class LiveLoginService {
@@ -233,6 +236,15 @@ class LiveLoginService {
             .type = LiveLoginEventType::session_requested,
             .session = session,
             .protocol_opcode = stream_event.protocol_opcode,
+        });
+        break;
+      case eq2::protocol::StreamEventType::server_key_requested:
+        send_application_or_capture(session, transport, encode_key_request_app());
+        events_.push_back(LiveLoginEvent{
+            .type = LiveLoginEventType::key_requested,
+            .session = session,
+            .protocol_opcode = stream_event.protocol_opcode,
+            .application_opcode = options_.key_request_opcode,
         });
         break;
       case eq2::protocol::StreamEventType::app_packet:
@@ -429,6 +441,18 @@ class LiveLoginService {
                                            eq2::protocol::kOpPacket, app_packet)
                                      : iter->second.encode_application_protocol_packet(app_packet);
     send_or_capture(session, transport, protocol_packet);
+  }
+
+  [[nodiscard]] auto encode_key_request_app() const -> std::vector<std::uint8_t> {
+    eq2::protocol::PacketWriter payload;
+    payload.append_u32_le(60);
+    for (auto index = 0; index < 60; ++index) {
+      payload.append_u8(0xff);
+    }
+    payload.append_u32_le(1);
+    payload.append_u8(1);
+    return eq2::protocol::encode_application_packet(
+        options_.key_request_opcode, payload.bytes(), options_.opcode_width);
   }
 
   auto pipeline_for(eq2::net::SessionId session, eq2::net::TransportKind transport)

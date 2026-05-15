@@ -284,6 +284,7 @@ void login_opcode_lookup_reads_legacy_opcode_table() {
               eq2::db::QueryRow{.columns = {{"name", "OP_AllWSDescRequestMsg"}, {"opcode", "4"}}},
               eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescRequestMsg"}, {"opcode", "5"}}},
               eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescReplyMsg"}, {"opcode", "6"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_WSLoginRequestMsg"}, {"opcode", "7"}}},
           },
   });
 
@@ -303,6 +304,8 @@ void login_opcode_lookup_reads_legacy_opcode_table() {
                "login opcode lookup maps characters request opcode");
     require_eq(opcodes.value().characters_reply_opcode, static_cast<std::uint16_t>(6),
                "login opcode lookup maps characters reply opcode");
+    require_eq(opcodes.value().key_request_opcode, static_cast<std::uint16_t>(7),
+               "login opcode lookup maps key request opcode");
   }
   require(connection.requests.front().sql.find("from opcodes") != std::string::npos,
           "login opcode lookup reads the opcodes table");
@@ -368,6 +371,8 @@ void login_opcode_lookup_reports_missing_required_opcodes() {
           "login opcode lookup names the missing characters request opcode");
   require(opcodes.error().message.find("OP_AllCharactersDescReplyMsg") != std::string::npos,
           "login opcode lookup names the missing characters reply opcode");
+  require(opcodes.error().message.find("OP_WSLoginRequestMsg") != std::string::npos,
+          "login opcode lookup names the missing key request opcode");
 }
 
 void login_schema_preflight_checks_required_login_tables() {

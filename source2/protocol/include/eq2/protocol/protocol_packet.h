@@ -62,6 +62,7 @@ inline auto is_protocol_packet_opcode(std::uint16_t opcode) -> bool {
     case kOpCombined:
     case kOpSessionDisconnect:
     case kOpKeepAlive:
+    case kOpServerKeyRequest:
     case kOpSessionStatResponse:
     case kOpPacket:
     case kOpFragment:
