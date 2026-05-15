@@ -393,6 +393,23 @@ void server_ls_info_payload_decodes_fixed_legacy_fields() {
   require_eq(info->server_version, std::string_view("2026.05.14"), "LSInfo server version decodes");
   require_eq(info->server_type, static_cast<std::uint8_t>(4), "LSInfo server type decodes");
   require_eq(info->database_version, static_cast<std::uint32_t>(1234), "LSInfo DB version decodes");
+
+  const auto encoded = eq2::protocol::encode_server_ls_info_payload(eq2::protocol::ServerLsInfo{
+      .world_name = "Public World",
+      .address = "127.0.0.1",
+      .account = "world-account",
+      .password = "secret",
+      .protocol_version = "0.5.0",
+      .server_version = "2026.05.14",
+      .server_type = 4,
+      .database_version = 1234,
+  });
+  require_eq(encoded.size(), eq2::protocol::kServerLsInfoPayloadSize,
+             "server LSInfo payload encodes to the packed legacy size");
+  const auto encoded_info = eq2::protocol::decode_server_ls_info_payload(encoded);
+  require(encoded_info.has_value(), "encoded LSInfo payload decodes");
+  require_eq(encoded_info->world_name, std::string_view("Public World"),
+             "encoded LSInfo world name round trips");
 }
 
 void user_to_world_payloads_preserve_login_world_handoff_fields() {

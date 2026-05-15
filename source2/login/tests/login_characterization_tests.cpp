@@ -1,4 +1,5 @@
 #include <eq2/login/authentication.h>
+#include <eq2/db/fake_database.h>
 
 #include <cstdlib>
 #include <iostream>
@@ -172,6 +173,18 @@ void successful_duplicate_login_disconnects_existing_session() {
           "duplicate login requests disconnect for the previous connection");
 }
 
+void source2_db_account_repository_authenticates_login_without_raw_db_api() {
+  eq2::db::FakeLoginAccountRepository accounts;
+  accounts.add_account(42, "tester", "correct");
+
+  const auto result = eq2::login::authenticate_login(make_request("tester", "correct"), accounts);
+
+  require_eq(result.reply_code, eq2::login::LoginReplyCode::accepted,
+             "login authentication accepts source2 db account repositories");
+  require(result.account.has_value(), "source2 db account authentication returns an account");
+  require_eq(result.account->id, 42, "source2 db account authentication preserves account id");
+}
+
 }  // namespace
 
 int main() {
@@ -180,6 +193,7 @@ int main() {
   unsupported_client_version_is_denied_before_account_lookup();
   missing_account_is_created_only_when_creation_is_enabled();
   successful_duplicate_login_disconnects_existing_session();
+  source2_db_account_repository_authenticates_login_without_raw_db_api();
 
   if (failures != 0) {
     std::cerr << failures << " characterization assertion(s) failed\n";

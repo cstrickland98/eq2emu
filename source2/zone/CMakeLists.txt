@@ -13,3 +13,19 @@ target_link_libraries(eq2_zone INTERFACE
 )
 
 eq2_target_defaults(eq2_zone)
+
+if(BUILD_TESTING)
+  add_executable(eq2_zone_runtime_tests
+    tests/zone_runtime_tests.cpp
+  )
+
+  target_link_libraries(eq2_zone_runtime_tests PRIVATE
+    eq2::zone
+  )
+
+  eq2_target_defaults(eq2_zone_runtime_tests)
+
+  add_test(NAME eq2_zone_runtime_tests
+    COMMAND eq2_zone_runtime_tests
+  )
+endif()

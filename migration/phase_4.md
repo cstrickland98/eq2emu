@@ -1,6 +1,6 @@
 # Phase 4: Protocol Module
 
-Status: in progress.
+Status: complete.
 
 ## Purpose
 
@@ -41,6 +41,7 @@ Protocol owns packet structure, opcode mapping, stream framing rules that are pr
 - Added protocol-owned `LS_PlayRequest` and `LS_PlayResponse` payload helpers for the client-facing play-character boundary.
 - Added protocol-owned `LS_DeleteCharacterRequest` and `LS_DeleteCharacterResponse` payload helpers for the character-select delete boundary.
 - Confirmed the Debug source2 build and all current CTest tests pass after the login request, world-entry request, character-handoff, play-character, and delete-character protocol slice.
+- Audited the Phase 4 exit criteria: `eq2_protocol_tests` links only `eq2::protocol`, the protocol tree has no login, world, zone, database, scripting, or net dependencies, and login/world-facing characterization coverage consumes source2 protocol APIs rather than legacy packet internals.
 
 ## Exit Criteria
 

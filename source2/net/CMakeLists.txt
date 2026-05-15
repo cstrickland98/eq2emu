@@ -11,3 +11,19 @@ target_link_libraries(eq2_net INTERFACE
 )
 
 eq2_target_defaults(eq2_net)
+
+if(BUILD_TESTING)
+  add_executable(eq2_net_tests
+    tests/net_tests.cpp
+  )
+
+  target_link_libraries(eq2_net_tests PRIVATE
+    eq2::net
+  )
+
+  eq2_target_defaults(eq2_net_tests)
+
+  add_test(NAME eq2_net_tests
+    COMMAND eq2_net_tests
+  )
+endif()

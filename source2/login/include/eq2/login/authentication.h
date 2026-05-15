@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace eq2::login {
 
@@ -60,9 +61,14 @@ auto authenticate_login(const LoginAuthenticationRequest& request, AccountReposi
     };
   }
 
+  auto login_account = LoginAccount{
+      .id = account->id,
+      .name = std::string(account->name),
+  };
+
   return LoginAuthenticationResult{
       .reply_code = LoginReplyCode::accepted,
-      .account = account,
+      .account = std::move(login_account),
       .should_disconnect_current_session = false,
       .should_disconnect_existing_session = request.account_already_has_session,
       .should_send_world_list_after_login = true,

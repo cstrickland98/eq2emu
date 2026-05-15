@@ -126,6 +126,19 @@ inline auto decode_server_ls_info_payload(std::span<const std::uint8_t> bytes)
   };
 }
 
+inline auto encode_server_ls_info_payload(const ServerLsInfo& info) -> std::vector<std::uint8_t> {
+  PacketWriter writer;
+  detail::append_fixed_c_string(writer, info.world_name, 201);
+  detail::append_fixed_c_string(writer, info.address, 250);
+  detail::append_fixed_c_string(writer, info.account, 31);
+  detail::append_fixed_c_string(writer, info.password, 256);
+  detail::append_fixed_c_string(writer, info.protocol_version, 25);
+  detail::append_fixed_c_string(writer, info.server_version, 64);
+  writer.append_u8(info.server_type);
+  writer.append_u32_le(info.database_version);
+  return std::move(writer).into_bytes();
+}
+
 inline auto decode_user_to_world_request_payload(std::span<const std::uint8_t> bytes)
     -> std::optional<UserToWorldRequest> {
   if (bytes.size() != kUserToWorldRequestPayloadSize) {
