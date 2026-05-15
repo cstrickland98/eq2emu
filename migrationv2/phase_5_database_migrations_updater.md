@@ -93,22 +93,24 @@ Start with:
 
 Dependency note:
 
-- Live MariaDB apply remains blocked on the Phase 4 adapter dependency. The updater and migration library are structured so a real `QueryConnection` can be plugged in once the MariaDB C/C++ connector is present, but this phase does not claim live DB apply against MariaDB.
+- The updater now has a `--mariadb` execution path backed by
+  `MariaDbConnection` plus CLI/env configuration for host, port, database,
+  user, and password. The current vcpkg-backed build enables MariaDB
+  Connector/C through `libmariadb`; live updater execution against the target
+  host remains blocked in this Codex shell by the same
+  `codex_sandbox_offline_block_outbound` firewall rule as the login gate.
 
 ## Verification Commands
 
 ```powershell
-cmake --build build\source2 --config Debug --target eq2_db_tests
-ctest --test-dir build\source2 -C Debug -R "db|migration|updater" --output-on-failure
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -UseVcpkg -LiveSmoke -BuildDir build\source2-vcpkg-user-verify
 ```
 
 Additional verification run:
 
 ```powershell
-cmake -S . -B build\source2
-cmake --build build\source2 --config Debug --target eq2_db_tests eq2_db_updater
-ctest --test-dir build\source2 -C Debug -R eq2_db_tests --output-on-failure
-build\source2\source2\tools\db_updater\Debug\eq2_db_updater.exe --database login --path database\login\updates --list
-build\source2\source2\tools\db_updater\Debug\eq2_db_updater.exe --database world --path database\world\updates --dry-run
-build\source2\source2\tools\db_updater\Debug\eq2_db_updater.exe --database login --record-baseline external_dump_20260515
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -UseVcpkg -LiveSmoke -BuildDir build\source2-vcpkg-user-verify
+build\source2-vcpkg-user-verify\source2\tools\db_updater\Debug\eq2_db_updater.exe --database login --path database\login\updates --list
+build\source2-vcpkg-user-verify\source2\tools\db_updater\Debug\eq2_db_updater.exe --database world --path database\world\updates --dry-run
+build\source2-vcpkg-user-verify\source2\tools\db_updater\Debug\eq2_db_updater.exe --database login --record-baseline external_dump_20260515
 ```

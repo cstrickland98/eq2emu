@@ -11,6 +11,7 @@ struct DatabaseConfig {
   std::string database;
   std::string username;
   std::string password;
+  bool use_tls = false;
   std::uint16_t max_connections = 4;
 };
 

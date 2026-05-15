@@ -86,11 +86,13 @@ void database_config_captures_connection_settings() {
       .database = "eq2login",
       .username = "eq2",
       .password = "secret",
+      .use_tls = true,
       .max_connections = 8,
   };
 
   require_eq(config.host, std::string_view("db.local"), "config stores host");
   require_eq(config.port, static_cast<std::uint16_t>(3307), "config stores port");
+  require(config.use_tls, "config stores TLS preference");
   require_eq(config.max_connections, static_cast<std::uint16_t>(8), "config stores pool size");
 }
 
@@ -191,6 +193,27 @@ void sql_repositories_execute_expected_query_boundaries() {
              "SQL account repository parameterizes username and password");
 
   connection->results.push_back(eq2::db::QueryResult{
+      .rows = {eq2::db::QueryRow{.columns = {{"version", "*"}}}},
+  });
+  eq2::db::SqlWorldRegistrationRepository worlds(connection);
+  require(worlds.server_version_is_allowed("2026.05.14"),
+          "SQL world repository accepts login_versions wildcard rows");
+  require(connection->requests.back().sql.find("version = '*'") != std::string::npos,
+          "SQL world repository checks legacy wildcard version");
+
+  connection->results.push_back(eq2::db::QueryResult{
+      .rows = {eq2::db::QueryRow{.columns = {{"id", "77"}}}},
+  });
+  require_eq(worlds.check_server_account("world-account", "password-hash"), 77,
+             "SQL world repository maps world account id");
+  require(connection->requests.back().sql.find("lower(password)") != std::string::npos,
+          "SQL world repository accepts legacy hashed world password");
+  require(connection->requests.back().sql.find("lower(sha2(?, 512))") != std::string::npos,
+          "SQL world repository accepts raw world password without hash-case sensitivity");
+  require_eq(connection->requests.back().parameters.size(), static_cast<std::size_t>(3),
+             "SQL world repository parameterizes raw and hashed world password forms");
+
+  connection->results.push_back(eq2::db::QueryResult{
       .rows =
           {
               eq2::db::QueryRow{.columns =
@@ -211,6 +234,10 @@ void sql_repositories_execute_expected_query_boundaries() {
   const auto list = characters.load_character_list(42);
   require_eq(list.size(), static_cast<std::size_t>(1),
              "SQL character repository maps character rows");
+  require(connection->requests.back().sql.find("char_id as character_id") != std::string::npos,
+          "SQL character repository reads the legacy char_id column");
+  require(connection->requests.back().sql.find("deleted = 0") != std::string::npos,
+          "SQL character repository filters deleted legacy characters");
   require_eq(list.front().name, std::string_view("Alys"),
              "SQL character repository maps character name");
   require_eq(list.front().current_zone_id, 10,
@@ -235,11 +262,187 @@ void sql_repositories_execute_expected_query_boundaries() {
   require(zone.has_value(), "SQL zone repository maps zone row");
   require_eq(zone->name, std::string_view("qeynos"), "SQL zone repository maps zone name");
 
-  eq2::db::MariaDbConnection disabled(eq2::db::DatabaseConfig{.database = "eq2"});
-  const auto disabled_result = disabled.execute(eq2::db::QueryRequest{.sql = "select 1"});
+  eq2::db::MariaDbConnection mariadb(eq2::db::DatabaseConfig{.database = "eq2"});
+  require_eq(mariadb.config().database, std::string_view("eq2"),
+             "MariaDB adapter preserves database config");
+#if !defined(EQ2_SOURCE2_HAS_MARIADB)
+  const auto disabled_result = mariadb.execute(eq2::db::QueryRequest{.sql = "select 1"});
   require(!disabled_result.has_value(), "disabled MariaDB adapter reports unavailable explicitly");
   require_eq(disabled_result.error().code, eq2::core::ErrorCode::unavailable,
              "disabled MariaDB adapter uses unavailable error");
+#endif
+}
+
+void login_opcode_lookup_reads_legacy_opcode_table() {
+  ScriptedConnection connection;
+  connection.results.push_back(eq2::db::QueryResult{
+      .rows =
+          {
+              eq2::db::QueryRow{.columns = {{"name", "OP_LoginRequestMsg"}, {"opcode", "1"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LoginReplyMsg"}, {"opcode", "2"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_WorldListMsg"}, {"opcode", "3"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_AllWSDescRequestMsg"}, {"opcode", "4"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescRequestMsg"}, {"opcode", "5"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescReplyMsg"}, {"opcode", "6"}}},
+          },
+  });
+
+  const auto opcodes = eq2::db::load_login_opcode_set(connection, 546);
+
+  require(opcodes.has_value(), "login opcode lookup succeeds from legacy opcodes table");
+  if (opcodes.has_value()) {
+    require_eq(opcodes.value().login_request_opcode, static_cast<std::uint16_t>(1),
+               "login opcode lookup maps request opcode");
+    require_eq(opcodes.value().login_reply_opcode, static_cast<std::uint16_t>(2),
+               "login opcode lookup maps reply opcode");
+    require_eq(opcodes.value().world_list_opcode, static_cast<std::uint16_t>(3),
+               "login opcode lookup maps world-list opcode");
+    require_eq(opcodes.value().all_worlds_request_opcode, static_cast<std::uint16_t>(4),
+               "login opcode lookup maps all-worlds request opcode");
+    require_eq(opcodes.value().characters_request_opcode, static_cast<std::uint16_t>(5),
+               "login opcode lookup maps characters request opcode");
+    require_eq(opcodes.value().characters_reply_opcode, static_cast<std::uint16_t>(6),
+               "login opcode lookup maps characters reply opcode");
+  }
+  require(connection.requests.front().sql.find("from opcodes") != std::string::npos,
+          "login opcode lookup reads the opcodes table");
+  require_eq(connection.requests.front().parameters.front(), std::string_view("546"),
+             "login opcode lookup parameterizes client version");
+}
+
+void login_opcode_version_range_lookup_reads_matching_legacy_ranges() {
+  ScriptedConnection connection;
+  connection.results.push_back(eq2::db::QueryResult{
+      .rows =
+          {
+              eq2::db::QueryRow{.columns = {{"version_range1", "546"}, {"version_range2", "561"}}},
+          },
+  });
+
+  const auto ranges = eq2::db::load_login_opcode_version_ranges(connection, 550);
+
+  require(ranges.has_value(), "login opcode version range lookup succeeds");
+  if (ranges.has_value()) {
+    require_eq(ranges.value().size(), static_cast<std::size_t>(1),
+               "login opcode version range lookup maps matching row count");
+    require_eq(ranges.value().front().min_version, static_cast<std::int16_t>(546),
+               "login opcode version range lookup maps lower bound");
+    require_eq(ranges.value().front().max_version, static_cast<std::int16_t>(561),
+               "login opcode version range lookup maps upper bound");
+  }
+  require(connection.requests.front().sql.find("select distinct version_range1, version_range2 from opcodes") !=
+              std::string::npos,
+          "login opcode version range lookup reads the legacy opcode table ranges");
+  require_eq(connection.requests.front().parameters.front(), std::string_view("550"),
+             "login opcode version range lookup parameterizes client version");
+}
+
+void login_opcode_version_range_lookup_reports_missing_range() {
+  ScriptedConnection connection;
+
+  const auto ranges = eq2::db::load_login_opcode_version_ranges(connection, 999);
+
+  require(!ranges.has_value(), "login opcode version range lookup fails when no range matches");
+  require(ranges.error().message.find("999") != std::string::npos,
+          "login opcode version range lookup names the missing client version");
+}
+
+void login_opcode_lookup_reports_missing_required_opcodes() {
+  ScriptedConnection connection;
+  connection.results.push_back(eq2::db::QueryResult{
+      .rows =
+          {
+              eq2::db::QueryRow{.columns = {{"name", "OP_LoginRequestMsg"}, {"opcode", "1"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LoginReplyMsg"}, {"opcode", "2"}}},
+          },
+  });
+
+  const auto opcodes = eq2::db::load_login_opcode_set(connection, 546);
+
+  require(!opcodes.has_value(), "login opcode lookup fails when world-list opcode is missing");
+  require(opcodes.error().message.find("OP_WorldListMsg") != std::string::npos,
+          "login opcode lookup names the missing opcode");
+  require(opcodes.error().message.find("OP_AllWSDescRequestMsg") != std::string::npos,
+          "login opcode lookup names the missing all-worlds request opcode");
+  require(opcodes.error().message.find("OP_AllCharactersDescRequestMsg") != std::string::npos,
+          "login opcode lookup names the missing characters request opcode");
+  require(opcodes.error().message.find("OP_AllCharactersDescReplyMsg") != std::string::npos,
+          "login opcode lookup names the missing characters reply opcode");
+}
+
+void login_schema_preflight_checks_required_login_tables() {
+  ScriptedConnection connection;
+  const auto result = eq2::db::preflight_login_database_schema(connection);
+  require(result.has_value(), "login schema preflight succeeds when probes execute");
+  require_eq(connection.requests.size(), static_cast<std::size_t>(10),
+             "login schema preflight checks tables and prepared account lookup");
+  require(connection.requests[0].sql.find("from account") != std::string::npos,
+          "login schema preflight checks account table");
+  require(connection.requests[1].sql.find("from login_versions") != std::string::npos,
+          "login schema preflight checks login_versions table");
+  require(connection.requests[2].sql.find("from login_worldservers") != std::string::npos,
+          "login schema preflight checks login_worldservers table");
+  require(connection.requests[3].sql.find("from login_bannedips") != std::string::npos,
+          "login schema preflight checks login_bannedips table");
+  require(connection.requests[4].sql.find("from opcodes") != std::string::npos,
+          "login schema preflight checks opcodes table");
+  require(connection.requests[5].sql.find("from login_characters") != std::string::npos,
+          "login schema preflight checks login_characters table");
+  require(connection.requests[5].sql.find("char_id") != std::string::npos,
+          "login schema preflight checks legacy login_characters char_id column");
+  require(connection.requests[6].sql.find("from login_equipment") != std::string::npos,
+          "login schema preflight checks login_equipment table");
+  require(connection.requests[7].sql.find("from login_char_colors") != std::string::npos,
+          "login schema preflight checks login_char_colors table");
+  require(connection.requests[8].sql.find("from ls_world_zones") != std::string::npos,
+          "login schema preflight checks ls_world_zones table");
+  require(connection.requests[9].sql.find("name = ? and passwd = sha2(?, 512)") != std::string::npos,
+          "login schema preflight checks parameterized account lookup");
+  require_eq(connection.requests[9].parameters.size(), static_cast<std::size_t>(2),
+             "login schema preflight exercises prepared statement parameters");
+}
+
+void login_schema_preflight_reports_failed_probe_context() {
+  ScriptedConnection connection;
+  connection.fail_on_sql_fragment = "login_worldservers";
+  const auto result = eq2::db::preflight_login_database_schema(connection);
+  require(!result.has_value(), "login schema preflight reports failed probes");
+  require_eq(result.error().code, eq2::core::ErrorCode::parse_error,
+             "login schema preflight preserves database error code");
+  require(result.error().message.find("login_worldservers table") != std::string::npos,
+          "login schema preflight failure names the failed table");
+}
+
+void login_schema_preflight_reports_prepared_lookup_failure() {
+  ScriptedConnection connection;
+  connection.fail_on_sql_fragment = "name = ? and passwd";
+  const auto result = eq2::db::preflight_login_database_schema(connection);
+  require(!result.has_value(), "login schema preflight reports prepared lookup failure");
+  require(result.error().message.find("parameterized account lookup") != std::string::npos,
+          "login schema preflight names prepared account lookup failure");
+}
+
+void world_schema_preflight_checks_required_world_tables() {
+  ScriptedConnection connection;
+  const auto result = eq2::db::preflight_world_database_schema(connection);
+  require(result.has_value(), "world schema preflight succeeds when probes execute");
+  require_eq(connection.requests.size(), static_cast<std::size_t>(2),
+             "world schema preflight checks table and prepared lookup");
+  require(connection.requests[0].sql.find("from zones") != std::string::npos,
+          "world schema preflight checks zones table");
+  require(connection.requests[1].sql.find("where id = ?") != std::string::npos,
+          "world schema preflight checks parameterized zone lookup");
+  require_eq(connection.requests[1].parameters.front(), std::string_view("0"),
+             "world schema preflight exercises prepared statement parameters");
+}
+
+void world_schema_preflight_reports_failed_probe_context() {
+  ScriptedConnection connection;
+  connection.fail_on_sql_fragment = "from zones";
+  const auto result = eq2::db::preflight_world_database_schema(connection);
+  require(!result.has_value(), "world schema preflight reports failed probes");
+  require(result.error().message.find("zones table") != std::string::npos,
+          "world schema preflight failure names the failed table");
 }
 
 void migration_discovery_orders_and_filters_pending_files() {
@@ -358,6 +561,15 @@ int main() {
   async_executor_runs_queries_off_the_owner_thread();
   fake_repositories_cover_critical_login_world_character_and_zone_boundaries();
   sql_repositories_execute_expected_query_boundaries();
+  login_opcode_lookup_reads_legacy_opcode_table();
+  login_opcode_version_range_lookup_reads_matching_legacy_ranges();
+  login_opcode_version_range_lookup_reports_missing_range();
+  login_opcode_lookup_reports_missing_required_opcodes();
+  login_schema_preflight_checks_required_login_tables();
+  login_schema_preflight_reports_failed_probe_context();
+  login_schema_preflight_reports_prepared_lookup_failure();
+  world_schema_preflight_checks_required_world_tables();
+  world_schema_preflight_reports_failed_probe_context();
   migration_discovery_orders_and_filters_pending_files();
   migration_apply_tracks_success_and_stops_on_failure();
   sql_migration_tracking_uses_schema_version_table();

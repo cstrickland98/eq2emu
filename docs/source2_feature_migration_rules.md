@@ -4,7 +4,9 @@
 
 Source2 is ready for the first narrow gameplay feature pilot.
 
-Source2 is not yet ready for broad live-client feature migration. Broad feature work remains gated by live MariaDB connector enablement, client socket write support, and packet response serialization.
+Source2 is ready to start feature migration inside the implemented source2 boundaries: repository-backed data access, real loopback transport, stream/session framing, response writes, current response serializers, zone owner commands, and the staged Lua API.
+
+Source2 is not yet ready for broad live-client parity. Broad work remains gated by live MariaDB validation with an installed connector/test DB and by feature-by-feature legacy client packet and Lua API compatibility.
 
 ## Required Checklist For Each Feature
 
@@ -24,7 +26,7 @@ Source2 is not yet ready for broad live-client feature migration. Broad feature 
 
 ## Allowed Pilot Scope
 
-The first pilot must be narrow, observable, and reversible. It should avoid packet serialization that is not already supported by source2.
+The first pilot must be narrow, observable, and reversible. It should use packet serialization that is already supported by source2 or add focused serializers with tests before exposing a live path.
 
 Selected pilot:
 

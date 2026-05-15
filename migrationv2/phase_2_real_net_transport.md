@@ -64,10 +64,11 @@ The existing source2 net types model lifecycle, queues, and events, but do not o
 - Added `source2/net/include/eq2/net/socket_transport.h`.
 - Added `eq2::net::SocketRuntime` for platform socket startup/cleanup.
 - Added real loopback `TcpSocketServer` that binds a TCP socket, accepts a connection on a worker thread, receives bytes, emits lifecycle and received events, and stops cleanly.
-- Added real loopback `UdpSocketServer` that binds a UDP socket, receives datagrams on a worker thread, emits lifecycle and received events, and stops cleanly.
-- Added `send_tcp_loopback` and `send_udp_loopback` helpers for integration tests.
+- Added active TCP session tracking and `TcpSocketServer::send` so source2 services can write protocol responses back to connected clients.
+- Added real loopback `UdpSocketServer` that binds a UDP socket, tracks one session per remote endpoint, receives datagrams on a worker thread, writes responses back with `sendto`, emits lifecycle and received events, and stops cleanly.
+- Added `send_tcp_loopback`, `exchange_tcp_loopback`, and `send_udp_loopback` helpers for integration tests.
 - Updated `eq2_net` to link `ws2_32` on Windows.
-- Extended `eq2_net_tests` with real TCP and UDP localhost byte-exchange tests.
+- Extended `eq2_net_tests` with real TCP/UDP localhost byte-exchange tests and a TCP server-to-client response test.
 - Verification:
   - `cmake -S . -B build\source2`: passed.
   - `cmake --build build\source2 --config Debug --target eq2_net_tests`: passed.

@@ -1,0 +1,121 @@
+-- Source2 target MariaDB host-side preflight.
+--
+-- Run this on the MariaDB host after replacing the placeholder values below.
+-- It does not store secrets in source control; keep the edited copy outside the
+-- repo. Use the output to confirm the DB side before rerunning
+-- scripts/source2_live_login_verify.ps1 from the source2 host.
+
+set @source2_host := '192.168.1.41';
+set @db_user := 'eq2emu';
+set @login_db := 'eq2ls';
+set @world_db := 'eq2emu';
+set @login_username := 'testlabs';
+set @login_password := '<login-password>';
+set @client_version := 546;
+
+select 'server port' as check_name, @@port as value;
+show variables like 'bind_address';
+
+select 'matching DB users' as check_name, user, host
+from mysql.user
+where user = @db_user
+order by host;
+
+select 'grant SQL to run if host-specific user is missing' as check_name,
+       concat(
+         'create user if not exists ''',
+         @db_user,
+         '''@''',
+         @source2_host,
+         ''' identified by ''<db-password>'';'
+       ) as sql_text
+union all
+select 'grant SQL to run if login DB grant is missing',
+       concat('grant select, insert, update, delete on `', @login_db, '`.* to ''', @db_user, '''@''', @source2_host, ''';')
+union all
+select 'grant SQL to run if world DB grant is missing',
+       concat('grant select, insert, update, delete on `', @world_db, '`.* to ''', @db_user, '''@''', @source2_host, ''';')
+union all
+select 'grant SQL finalizer',
+       'flush privileges;';
+
+select 'required databases' as check_name, schema_name
+from information_schema.schemata
+where schema_name in (@login_db, @world_db)
+order by schema_name;
+
+select 'required login tables' as check_name, table_name
+from information_schema.tables
+where table_schema = @login_db
+  and table_name in (
+    'account',
+    'login_versions',
+    'login_worldservers',
+    'login_bannedips',
+    'opcodes',
+    'login_characters',
+    'login_equipment',
+    'login_char_colors',
+    'ls_world_zones'
+  )
+order by table_name;
+
+select 'required world tables' as check_name, table_name
+from information_schema.tables
+where table_schema = @world_db
+  and table_name in ('zones')
+order by table_name;
+
+select 'required login columns' as check_name, table_name, column_name
+from information_schema.columns
+where table_schema = @login_db
+  and (
+    (table_name = 'account' and column_name in ('id', 'name', 'passwd'))
+    or (table_name = 'opcodes' and column_name in ('id', 'name', 'opcode', 'version_range1', 'version_range2'))
+    or (table_name = 'login_worldservers' and column_name in ('id', 'name', 'account', 'password', 'disabled'))
+    or (table_name = 'login_characters' and column_name in ('id', 'char_id', 'server_id', 'name', 'race', 'class', 'gender', 'deleted'))
+  )
+order by table_name, column_name;
+
+set @account_sql := concat(
+  'select ''login account auth'' as check_name, id, name from `',
+  @login_db,
+  '`.account where name = ? and passwd = sha2(?, 512)'
+);
+prepare account_stmt from @account_sql;
+execute account_stmt using @login_username, @login_password;
+deallocate prepare account_stmt;
+
+set @opcode_sql := concat(
+  'select ''required opcodes for client version'' as check_name, name, opcode, version_range1, version_range2 from `',
+  @login_db,
+  '`.opcodes where ? between version_range1 and version_range2 and name in (',
+  '''OP_LoginRequestMsg'',',
+  '''OP_LoginReplyMsg'',',
+  '''OP_WorldListMsg'',',
+  '''OP_AllWSDescRequestMsg'',',
+  '''OP_AllCharactersDescRequestMsg'',',
+  '''OP_AllCharactersDescReplyMsg''',
+  ') order by name'
+);
+prepare opcode_stmt from @opcode_sql;
+execute opcode_stmt using @client_version;
+deallocate prepare opcode_stmt;
+
+set @version_sql := concat(
+  'select ''allowed login versions'' as check_name, version from `',
+  @login_db,
+  '`.login_versions where version = ''source2'' or version = ''*'' order by version'
+);
+prepare version_stmt from @version_sql;
+execute version_stmt;
+deallocate prepare version_stmt;
+
+set @world_sql := concat(
+  'select ''enabled world accounts'' as check_name, id, name, account, disabled from `',
+  @login_db,
+  '`.login_worldservers where disabled = 0 order by name'
+);
+prepare world_stmt from @world_sql;
+execute world_stmt;
+deallocate prepare world_stmt;

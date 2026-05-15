@@ -4,6 +4,7 @@
 #include <eq2/zone/admission_feature.h>
 #include <eq2/zone/bootstrap.h>
 #include <eq2/zone/runtime.h>
+#include <eq2/zone/serialization.h>
 
 #include <cstdlib>
 #include <iostream>
@@ -162,6 +163,49 @@ void client_subscriptions_receive_zone_updates_from_snapshots() {
   require(zone.updates_for(client).empty(), "unsubscribed client receives no fanout updates");
 }
 
+void zone_snapshot_and_update_payloads_serialize_client_state() {
+  const auto snapshot_payload = eq2::zone::encode_zone_snapshot_payload(eq2::zone::ZoneSnapshot{
+      .zone = eq2::zone::ZoneId{10},
+      .tick = 0x100000002ULL,
+      .spawns =
+          {
+              eq2::zone::SpawnState{
+                  .id = eq2::zone::SpawnId{2002},
+                  .name = "Alys",
+                  .position = {.x = 1.5F, .y = 2.5F, .z = 3.5F, .heading = 4.5F},
+                  .hit_points = 100,
+              },
+          },
+  });
+  const auto snapshot = eq2::zone::decode_zone_snapshot_payload(snapshot_payload);
+  require(snapshot.has_value(), "zone snapshot payload decodes");
+  require_eq(snapshot->zone.value, 10, "zone snapshot payload preserves zone id");
+  require_eq(snapshot->tick, static_cast<std::uint64_t>(0x100000002ULL),
+             "zone snapshot payload preserves 64-bit tick");
+  require_eq(snapshot->spawns.size(), static_cast<std::size_t>(1),
+             "zone snapshot payload preserves spawn count");
+  require_eq(snapshot->spawns.front().id.value, 2002,
+             "zone snapshot payload preserves spawn id");
+  require_eq(snapshot->spawns.front().name, std::string_view("Alys"),
+             "zone snapshot payload preserves spawn name");
+  require_eq(snapshot->spawns.front().position.x, 1.5F,
+             "zone snapshot payload preserves position");
+
+  const auto update_payload = eq2::zone::encode_zone_update_payload(eq2::zone::ZoneUpdate{
+      .type = eq2::zone::ZoneUpdateType::combat_resolved,
+      .spawn = eq2::zone::SpawnId{2002},
+      .position = {.x = 5.0F, .heading = 90.0F},
+      .value = -25,
+  });
+  const auto update = eq2::zone::decode_zone_update_payload(update_payload);
+  require(update.has_value(), "zone update payload decodes");
+  require_eq(update->type, eq2::zone::ZoneUpdateType::combat_resolved,
+             "zone update payload preserves update type");
+  require_eq(update->spawn.value, 2002, "zone update payload preserves spawn id");
+  require_eq(update->position.heading, 90.0F, "zone update payload preserves heading");
+  require_eq(update->value, -25, "zone update payload preserves value");
+}
+
 void commands_can_be_posted_from_non_owner_threads_without_mutating_directly() {
   eq2::zone::ZoneRuntime zone(eq2::zone::ZoneId{10});
 
@@ -267,7 +311,12 @@ void zone_admission_feature_calls_lua_hook_through_owner_sink() {
       .name = "zone_admission",
   };
   scripts.load_script(script_id,
-                      "function player_entry() PostZoneMutation('admitted', ActorId()) end");
+                      "function player_entry() "
+                      "local x,y,z,h = GetCurrentZoneSafeLocation() "
+                      "if x == 1.5 and y == 2.5 and z == 3.5 and h == 4.5 then "
+                      "PostZoneMutation('safe_location', ActorId()) "
+                      "end "
+                      "end");
 
   eq2::zone::ZoneAdmissionFeature feature(bootstrap, scripts, sink, script_id, "player_entry");
   const auto result = feature.admit(eq2::zone::ZoneAdmissionRequest{
@@ -284,8 +333,8 @@ void zone_admission_feature_calls_lua_hook_through_owner_sink() {
   require(!result.script_error.has_value(), "zone admission feature hook succeeds");
   require_eq(sink.mutations.size(), static_cast<std::size_t>(1),
              "zone admission Lua hook posts to owner sink");
-  require_eq(sink.mutations.front().command, std::string_view("admitted"),
-             "zone admission Lua hook posts expected command");
+  require_eq(sink.mutations.front().command, std::string_view("safe_location"),
+             "zone admission Lua hook reads current safe location");
   require_eq(sink.mutations.front().ids.front(), 2002,
              "zone admission Lua hook receives admitted character id");
 }
@@ -329,6 +378,7 @@ int main() {
   zone_commands_mutate_state_only_when_owner_ticks();
   movement_and_combat_are_command_boundaries();
   client_subscriptions_receive_zone_updates_from_snapshots();
+  zone_snapshot_and_update_payloads_serialize_client_state();
   commands_can_be_posted_from_non_owner_threads_without_mutating_directly();
   db_bootstrap_admits_selected_character_and_produces_snapshot();
   zone_admission_feature_validates_legacy_edge_inputs();

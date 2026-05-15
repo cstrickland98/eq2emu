@@ -3,6 +3,7 @@
 #include <eq2/protocol/delete_character.h>
 #include <eq2/protocol/interserver_packet.h>
 #include <eq2/protocol/login_request.h>
+#include <eq2/protocol/login_response.h>
 #include <eq2/protocol/login_world.h>
 #include <eq2/protocol/opcode_table.h>
 #include <eq2/protocol/opcode_version.h>
@@ -487,6 +488,194 @@ void user_to_world_payloads_preserve_login_world_handoff_fields() {
           "truncated UserToWorld response payload is rejected");
 }
 
+void login_response_payloads_serialize_reply_and_world_list() {
+  const auto reply_payload = eq2::protocol::encode_login_reply_payload(
+      eq2::protocol::LoginReplyPayload{
+          .reply_code = 1,
+          .account_id = 42,
+      });
+  const auto reply = eq2::protocol::decode_login_reply_payload(reply_payload);
+  require(reply.has_value(), "login reply payload decodes");
+  require_eq(reply->reply_code, static_cast<std::uint8_t>(1),
+             "login reply payload preserves reply code");
+  require_eq(reply->account_id, static_cast<std::uint32_t>(42),
+             "login reply payload preserves account id");
+  require_eq(eq2::protocol::login_reply_protocol_frame_size(0x1235),
+             static_cast<std::size_t>(9),
+             "login reply protocol frame size includes protocol and application headers");
+  require_eq(eq2::protocol::login_reply_protocol_frame_size(0x1235,
+                                                            eq2::protocol::ApplicationOpcodeWidth::two_bytes,
+                                                            true),
+             static_cast<std::size_t>(11),
+             "sequenced login reply protocol frame size includes sequence header");
+
+  const auto legacy_reply_payload = eq2::protocol::encode_login_reply_payload(
+      eq2::protocol::LoginReplyPayload{
+          .reply_code = 0,
+          .account_id = 42,
+      },
+      546);
+  const std::vector<std::uint8_t> expected_legacy_reply{
+      0x00,
+      0x00, 0x00,
+      0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x2a, 0x00, 0x00, 0x00,
+      0x00, 0x00,
+      0x00,
+      0x01,
+      0xff, 0x7c,
+      0xff,
+      0xff, 0xff, 0x1f, 0x00,
+      0x00,
+      0xee,
+      0xff,
+      0x00,
+      0x00,
+  };
+  require(legacy_reply_payload == expected_legacy_reply,
+          "546 login reply uses the legacy LoginStructs.xml 284-era layout");
+  const auto legacy_reply =
+      eq2::protocol::decode_login_reply_payload(legacy_reply_payload, 546);
+  require(legacy_reply.has_value(), "546 login reply payload decodes");
+  require_eq(legacy_reply->account_id, static_cast<std::uint32_t>(42),
+             "546 login reply payload preserves account id");
+
+  const auto world_list_payload = eq2::protocol::encode_login_world_list_payload(
+      eq2::protocol::LoginWorldListPayload{
+          .worlds =
+              {
+                  eq2::protocol::LoginWorldEntry{
+                      .world_id = 77,
+                      .display_name = "Public World",
+                      .address = "127.0.0.1",
+                  },
+                  eq2::protocol::LoginWorldEntry{
+                      .world_id = 78,
+                      .display_name = "Dev World",
+                      .address = "192.0.2.10",
+                      .development_server = true,
+                  },
+              },
+      });
+  const auto world_list = eq2::protocol::decode_login_world_list_payload(world_list_payload);
+  require(world_list.has_value(), "login world list payload decodes");
+  require_eq(world_list->worlds.size(), static_cast<std::size_t>(2),
+             "login world list preserves entry count");
+  require_eq(world_list->worlds.front().world_id, 77,
+             "login world list preserves world id");
+  require_eq(world_list->worlds.front().display_name, std::string_view("Public World"),
+             "login world list preserves display name");
+  require_eq(world_list->worlds.back().address, std::string_view("192.0.2.10"),
+             "login world list preserves advertised address");
+  require(world_list->worlds.back().development_server,
+          "login world list preserves development flag");
+
+  const auto legacy_world_list_payload = eq2::protocol::encode_login_world_list_payload(
+      eq2::protocol::LoginWorldListPayload{
+          .worlds =
+              {
+                  eq2::protocol::LoginWorldEntry{
+                      .world_id = 77,
+                      .display_name = "Public World",
+                  },
+                  eq2::protocol::LoginWorldEntry{
+                      .world_id = 78,
+                      .display_name = "Dev World",
+                      .development_server = true,
+                  },
+              },
+      },
+      546);
+  const std::vector<std::uint8_t> expected_legacy_world_list{
+      0x02,
+      0x4d, 0x00, 0x00, 0x00,
+      0x0c, 0x00,
+      'P', 'u', 'b', 'l', 'i', 'c', ' ', 'W', 'o', 'r', 'l', 'd',
+      0x0c, 0x00,
+      'P', 'u', 'b', 'l', 'i', 'c', ' ', 'W', 'o', 'r', 'l', 'd',
+      0x01,
+      0x00,
+      0x00,
+      0x01,
+      0x00, 0x00,
+      0x00,
+      0x01,
+      0x00,
+      0xff, 0xff, 0xff, 0xff,
+      0x4e, 0x00, 0x00, 0x00,
+      0x09, 0x00,
+      'D', 'e', 'v', ' ', 'W', 'o', 'r', 'l', 'd',
+      0x09, 0x00,
+      'D', 'e', 'v', ' ', 'W', 'o', 'r', 'l', 'd',
+      0x01,
+      0x00,
+      0x00,
+      0x02,
+      0x00, 0x00,
+      0x01,
+      0x01,
+      0x00,
+      0xff, 0xff, 0xff, 0xff,
+  };
+  require(legacy_world_list_payload == expected_legacy_world_list,
+          "546 world list uses the legacy LoginStructs.xml world-list layout");
+  const auto legacy_world_list =
+      eq2::protocol::decode_login_world_list_payload(legacy_world_list_payload, 546);
+  require(legacy_world_list.has_value(), "546 world-list payload decodes");
+  require_eq(legacy_world_list->worlds.size(), static_cast<std::size_t>(2),
+             "546 world-list payload preserves entry count");
+  require_eq(legacy_world_list->worlds.back().display_name, std::string_view("Dev World"),
+             "546 world-list payload preserves display name");
+  require(legacy_world_list->worlds.back().development_server,
+          "546 world-list payload preserves development load flag");
+
+  const auto empty_character_list =
+      eq2::protocol::encode_empty_character_list_payload(42, 546);
+  const std::vector<std::uint8_t> expected_empty_character_list{
+      0x00,
+      0x2a, 0x00, 0x00, 0x00,
+      0xff, 0xff, 0xff, 0xff,
+      0x00, 0x00,
+      0x07, 0x00, 0x00, 0x00,
+      0x00,
+  };
+  require(empty_character_list == expected_empty_character_list,
+          "546 empty character-list payload writes legacy account info");
+
+  const auto login_reply_packet = eq2::protocol::encode_protocol_packet(
+      eq2::protocol::kOpPacket,
+      eq2::protocol::encode_application_packet(0x1235, reply_payload));
+  const auto world_list_packet = eq2::protocol::encode_protocol_packet(
+      eq2::protocol::kOpPacket,
+      eq2::protocol::encode_application_packet(0x1236, world_list_payload));
+  auto coalesced_response = login_reply_packet;
+  coalesced_response.insert(coalesced_response.end(),
+                            world_list_packet.begin(),
+                            world_list_packet.end());
+  const auto decoded_coalesced_reply =
+      eq2::protocol::decode_login_reply_protocol_frame(coalesced_response, 0x1235);
+  require(decoded_coalesced_reply.has_value(),
+          "login reply protocol frame decodes when followed by another TCP packet");
+  require_eq(decoded_coalesced_reply->account_id, static_cast<std::uint32_t>(42),
+             "coalesced login reply preserves account id");
+
+  eq2::protocol::PacketWriter sequenced_writer;
+  sequenced_writer.append_u16_be(0);
+  const auto sequenced_reply_app =
+      eq2::protocol::encode_application_packet(0x1235, reply_payload);
+  sequenced_writer.append_bytes(sequenced_reply_app);
+  const auto sequenced_reply_packet = eq2::protocol::encode_protocol_packet(
+      eq2::protocol::kOpPacket, sequenced_writer.bytes());
+  const auto decoded_sequenced_reply =
+      eq2::protocol::decode_login_reply_protocol_frame(sequenced_reply_packet, 0x1235);
+  require(decoded_sequenced_reply.has_value(), "sequenced login reply protocol frame decodes");
+  require_eq(decoded_sequenced_reply->account_id, static_cast<std::uint32_t>(42),
+             "sequenced login reply preserves account id");
+}
+
 void legacy_login_request_decodes_length_prefixed_credentials_and_version() {
   const auto fixture = eq2::protocol::encode_legacy_login_request_fixture(eq2::protocol::LoginRequest{
       .access_code = "station",
@@ -779,17 +968,57 @@ void stream_pipeline_handles_session_handshake_and_app_dispatch() {
 
   const auto app_payload =
       eq2::protocol::encode_application_packet(0x1234, std::array<std::uint8_t, 2>{0xaa, 0xbb});
+  eq2::protocol::PacketWriter sequenced_app_writer;
+  sequenced_app_writer.append_u16_be(0);
+  sequenced_app_writer.append_bytes(app_payload);
   const auto app_datagram =
-      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket, app_payload);
+      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket,
+                                            sequenced_app_writer.bytes());
   const auto app_result = pipeline.receive_datagram(app_datagram);
   require_eq(app_result.events.size(), static_cast<std::size_t>(1),
              "stream pipeline emits one app packet event");
+  require_eq(app_result.outbound.size(), static_cast<std::size_t>(1),
+             "stream pipeline emits one ACK for sequenced app packet");
+  const auto ack = eq2::protocol::decode_protocol_packet(app_result.outbound.front());
+  require(ack.has_value() && ack->opcode == eq2::protocol::kOpAck,
+          "stream pipeline ACK uses ACK protocol opcode");
   require_eq(app_result.events.front().type, eq2::protocol::StreamEventType::app_packet,
              "stream pipeline identifies app packet");
   require(app_result.events.front().app_packet.has_value(),
           "stream pipeline carries decoded app packet");
   require_eq(app_result.events.front().app_packet->opcode, static_cast<std::uint16_t>(0x1234),
              "stream pipeline carries app opcode");
+
+  auto one_byte_pipeline = eq2::protocol::StreamPipeline(eq2::protocol::StreamPipelineOptions{
+      .application_opcode_width = eq2::protocol::ApplicationOpcodeWidth::one_byte});
+  const auto one_byte_handshake = one_byte_pipeline.receive_datagram(session_request);
+  require_eq(one_byte_handshake.events.size(), static_cast<std::size_t>(1),
+             "one-byte stream pipeline accepts session request");
+  const auto one_byte_app = eq2::protocol::encode_application_packet(
+      0x07, std::span<const std::uint8_t>{},
+      eq2::protocol::ApplicationOpcodeWidth::one_byte);
+  eq2::protocol::PacketWriter one_byte_sequenced_writer;
+  one_byte_sequenced_writer.append_u16_be(1);
+  one_byte_sequenced_writer.append_bytes(one_byte_app);
+  const auto one_byte_datagram = eq2::protocol::encode_protocol_packet(
+      eq2::protocol::kOpPacket, one_byte_sequenced_writer.bytes());
+  const auto one_byte_result = one_byte_pipeline.receive_datagram(one_byte_datagram);
+  require_eq(one_byte_result.events.size(), static_cast<std::size_t>(1),
+             "one-byte stream pipeline emits app event for empty sequenced packet");
+  require_eq(one_byte_result.outbound.size(), static_cast<std::size_t>(1),
+             "one-byte stream pipeline ACKs empty sequenced packet");
+  require(one_byte_result.events.front().app_packet.has_value(),
+          "one-byte stream pipeline decodes empty sequenced app packet");
+  require_eq(one_byte_result.events.front().app_packet->opcode, static_cast<std::uint16_t>(0x07),
+             "one-byte stream pipeline preserves empty sequenced app opcode");
+
+  const auto outbound_app =
+      eq2::protocol::encode_application_packet(0x1235, std::array<std::uint8_t, 1>{0x01});
+  const auto outbound = pipeline.encode_application_protocol_packet(outbound_app);
+  const auto outbound_protocol = eq2::protocol::decode_protocol_packet(outbound);
+  require(outbound_protocol.has_value() &&
+              outbound_protocol->payload.size() >= outbound_app.size() + 2,
+          "stream pipeline wraps outbound app packets with a sequence");
 }
 
 }  // namespace
@@ -808,6 +1037,7 @@ int main() {
   interserver_packet_framing_matches_legacy_tcp_server_packets();
   server_ls_info_payload_decodes_fixed_legacy_fields();
   user_to_world_payloads_preserve_login_world_handoff_fields();
+  login_response_payloads_serialize_reply_and_world_list();
   legacy_login_request_decodes_length_prefixed_credentials_and_version();
   login_by_num_request_decodes_legacy_and_extended_world_entry_layouts();
   login_request_version_fallbacks_match_phase1_inventory();

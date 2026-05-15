@@ -1,10 +1,17 @@
 # Phase 11: Feature Migration Readiness Gate
 
-Status: complete.
+Status: blocked.
 
 ## Purpose
 
-Decide whether source2 is ready for gameplay feature migration. This phase is a hard gate: if live architecture evidence is incomplete, feature migration should not begin.
+Decide whether source2 is ready for gameplay feature migration. This phase is a
+hard gate: if live architecture evidence is incomplete, feature migration
+should not begin.
+
+The local architecture gate is implemented and green, but the requested
+deployment target is not fully proven because TCP `3306` is not reachable
+between this source2 machine and MariaDB at `192.168.1.243`. Treat feature
+migration as conditional until the target DB-backed live verifier passes.
 
 ## Where Work Begins
 
@@ -70,40 +77,63 @@ Start after Phases 1 through 10 are complete or explicitly waived. Use all phase
   - owner model: zone command owner and world/zone handoff boundaries exist.
 - Ran normal local CI:
   - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1`
-  - Result: 15/15 tests passed.
+  - Result: superseded by the current vcpkg-backed source2 CI run.
 - Ran live-smoke local CI:
-  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -LiveSmoke`
-  - Result: 17/17 tests passed, including login and world live smoke tests.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -UseVcpkg -LiveSmoke -BuildDir build\source2-vcpkg-user-verify`
+  - Result: 110 registered tests, 109 executed/passed, and 1 skipped opt-in
+    target live login gate. Executed tests include login/world live smoke, target config
+    parse tests, env-over-config/help-output tests, PowerShell owner wrapper tests,
+    owner start/probe dry-run secret-contract/config-secret/env-clearing/skip-preflight/skip-account-preflight-contract/command-quoting/call-operator/execution-policy/gate-label/env-scope tests,
+    one-command target live gate dry-run/TCP-before-secret/env-propagation
+    tests, target live CTest env-override tests, exit-after-env-restore tests,
+    start/probe-wrapper TCP-before-secret coverage, live verifier login/world
+    env-scope tests, opt-in target live CTest parse/default-skip coverage, and source2
+    loopback login/world tests.
 - Recorded feature migration rules in `docs/source2_feature_migration_rules.md`.
 - Selected the first feature migration pilot:
   - `Zone safe-location/player-admission feature slice`.
+- Follow-up blocker closure:
+  - MariaDB C API adapter and CMake discovery path added; vcpkg `libmariadb`
+    now enables the adapter and deploys runtime DLLs beside the owner-facing
+    `eq2_login_server.exe` and `eq2_world_server.exe` executables.
+  - DB updater now has `--mariadb` mode with CLI/env connection configuration.
+  - TCP response writes are implemented and tested through net/login/world.
+  - Login reply/world list, login-to-world handoff, play-character, and zone snapshot/update serializers are implemented for current source2 paths.
+  - `GetCurrentZoneSafeLocation` is implemented for the zone admission Lua feature path.
+  - Direct executable checks pass:
+    `eq2_login_server.exe --smoke-login-live --username <login-user>
+    --password <login-password> --client-version 546 --expect-world-count 0`
+    and `eq2_world_server.exe --smoke-world-live`.
 
 ## Decision
 
-Conditional go for the first narrow gameplay feature pilot.
+Conditional go for feature migration inside the implemented source2 boundaries.
 
-No-go for broad live-client gameplay migration yet.
+No-go for broad live-client parity yet.
 
-Blocking gaps for broad migration:
+No-go for claiming target live login readiness until
+`scripts/source2_live_login_verify.ps1` passes against `192.168.1.243` using the
+`eq2ls` login DB, `eq2emu` world DB, and the `testlabs` login account with the
+configured login password.
 
-- MariaDB C/C++ connector is not enabled in the source2 build, so live DB execution is still represented through `QueryConnection` test adapters.
-- Real socket transport receives inbound bytes but does not yet write source2 protocol responses back to connected clients.
-- Login/world/zone client packet response serialization is still incomplete.
-- Legacy Lua API compatibility is intentionally limited to a strict source2-safe subset.
+Remaining broad-parity gaps:
+
+- The source tree builds and runs the MariaDB C API adapter through vcpkg
+  `libmariadb`; live MariaDB validation still needs TCP reachability to the
+  target DB host and exposure of the required login/world schemas.
+- Full legacy live-client opcode/packet parity is not complete. LoginStream opcode width is configurable and source2 can load the login request/reply/world-list opcode values from the login DB `opcodes` table, but current serializers still cover only the implemented source2 paths and must expand feature by feature.
+- Legacy Lua API compatibility is intentionally limited to the source2-safe subset plus feature-driven additions such as `GetCurrentZoneSafeLocation`.
 
 The selected Phase 12 pilot is allowed because it stays inside the proven boundaries: DB-backed zone metadata, world-to-zone handoff, zone owner commands, snapshots, and Lua-safe hooks.
 
 ## Verification Commands
 
 ```powershell
-cmake -S . -B build\source2
-cmake --build build\source2 --config Debug
-ctest --test-dir build\source2 -C Debug --output-on-failure
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -UseVcpkg -LiveSmoke -BuildDir build\source2-vcpkg-user-verify
 ```
 
 Verification run:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -LiveSmoke
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -UseVcpkg -LiveSmoke -BuildDir build\source2-vcpkg-user-verify
 ```

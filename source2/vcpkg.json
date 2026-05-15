@@ -1,0 +1,7 @@
+{
+  "name": "eq2emu-source2",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "libmariadb"
+  ]
+}

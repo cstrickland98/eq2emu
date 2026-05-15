@@ -1,0 +1,33 @@
+; Source2 world server template for the current eq2emu target database.
+; Copy this file outside source control and replace password/account values
+; before serving.
+
+[world]
+address = 0.0.0.0
+port = 9101
+; Set this to the address clients can use to reach the world server.
+advertised_address = 127.0.0.1
+name = Source2 World
+; These must match a row in the login database login_worldservers table.
+account = change-me
+password = change-me
+protocol_version = 0.5.0
+server_version = source2
+database_version = 0
+
+[login]
+; Use 127.0.0.1 only when world runs on the same machine as source2 login.
+remote_address = 127.0.0.1
+remote_port = 9100
+
+[world_db]
+host = 192.168.1.243
+port = 3306
+name = eq2emu
+user = eq2emu
+password = change-me
+tls = false
+
+[logging]
+level = info
+console = true

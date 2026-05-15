@@ -49,6 +49,13 @@ struct ScriptEvent {
   std::string function;
   std::int32_t actor_id = 0;
   std::int32_t target_id = 0;
+  struct Position {
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+    float heading = 0.0F;
+  };
+  std::optional<Position> zone_safe_location;
 };
 
 struct ScriptMutation {
@@ -200,13 +207,17 @@ inline auto spawn_event(std::string function, std::int32_t spawn_id, std::int32_
   };
 }
 
-inline auto zone_event(std::string function, std::int32_t zone_id, std::int32_t actor_id = 0)
+inline auto zone_event(std::string function,
+                       std::int32_t zone_id,
+                       std::int32_t actor_id = 0,
+                       std::optional<ScriptEvent::Position> zone_safe_location = std::nullopt)
     -> ScriptEvent {
   return ScriptEvent{
       .category = ScriptCategory::zone,
       .function = std::move(function),
       .actor_id = actor_id,
       .target_id = zone_id,
+      .zone_safe_location = zone_safe_location,
   };
 }
 

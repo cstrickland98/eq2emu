@@ -1,0 +1,33 @@
+; Source2 login server example config.
+; Copy this file outside source control and replace the database credentials.
+
+[login]
+address = 0.0.0.0
+port = 9100
+client_version = 546
+account_creation_allowed = false
+; Legacy LoginStream clients use one-byte application opcodes. Set these
+; values from the login database opcodes table by default. Set
+; opcode_source = config to force the manual values below.
+opcode_source = database
+opcode_width = 1
+; Manual/debug fallback values for the login opcodes source2 needs during
+; credential login and the post-login world/character description request.
+request_opcode = 0x1234
+reply_opcode = 0x1235
+world_list_opcode = 0x1236
+all_worlds_request_opcode = 0x1237
+characters_request_opcode = 0x1238
+characters_reply_opcode = 0x1239
+
+[db]
+host = 127.0.0.1
+port = 3306
+name = eq2ls
+user = eq2emu
+password = change-me
+tls = false
+
+[logging]
+level = info
+console = true

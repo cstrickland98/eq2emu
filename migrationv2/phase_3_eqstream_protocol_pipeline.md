@@ -58,16 +58,22 @@ Start with:
 ## Progress
 
 - Added `source2/protocol/include/eq2/protocol/stream_pipeline.h`.
+- Added `source2/protocol/include/eq2/protocol/crc.h` with the legacy keyed
+  CRC used by `EQStream`.
 - Added `eq2::protocol::StreamPipeline` with:
   - session request handling,
   - session response generation,
+  - minimal sequenced `OP_Packet` app dispatch and ACK emission,
+  - sequenced outbound app packet wrapping,
+  - outbound CRC attachment for non-session protocol packets,
+  - inbound CRC stripping when a valid client CRC is present,
   - app packet decode/dispatch events,
   - combined-packet recursion,
   - keepalive/disconnect/malformed/unsupported event classification.
 - Kept stream pipeline independent of login, world, zone, DB, scripting, and net.
 - Extended `eq2_protocol_tests` for full stream handshake and app-packet dispatch over byte fixtures.
 - Added `eq2_stream_loopback_tests`, a separate integration test target linking `eq2::protocol` and `eq2::net`, to prove UDP loopback bytes flow through the stream pipeline.
-- Unsupported stream features still intentionally sit behind existing Phase 4 protocol transform boundaries: full compression, encryption, ACK/reliable resend, and CRC implementation remain separate implementation work before production client compatibility.
+- Unsupported stream features still intentionally sit behind existing Phase 4 protocol transform boundaries: full compression, encryption, fragment reassembly, reliable resend windows, and out-of-order queues remain separate implementation work before full production client compatibility. CRC is implemented for the login path.
 - Verification:
   - `cmake -S . -B build\source2`: passed.
   - `cmake --build build\source2 --config Debug --target eq2_protocol_tests eq2_stream_loopback_tests`: passed.

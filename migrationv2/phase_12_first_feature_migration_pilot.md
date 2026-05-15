@@ -82,6 +82,7 @@ Legacy references:
   - Admits through `ZoneBootstrapService`.
   - Preserves zone-owner mutation rules by using zone commands and snapshots.
   - Optionally calls a Lua zone hook through `ScriptEngine`.
+  - Supplies the admitted spawn safe location to Lua through `GetCurrentZoneSafeLocation`.
   - Records Lua hook errors without rolling back accepted zone admission.
 - Extended `eq2_zone_runtime_tests` with pilot coverage:
   - normal DB-backed admission,
@@ -89,7 +90,7 @@ Legacy references:
   - invalid account id,
   - invalid character id,
   - invalid access key,
-  - Lua hook success through `OwnerCommandSink`,
+  - Lua hook success through `OwnerCommandSink` and `GetCurrentZoneSafeLocation`,
   - Lua hook failure isolation.
 - Updated `eq2_world_server --smoke-world-live`.
   - The smoke now registers world with source2 login,

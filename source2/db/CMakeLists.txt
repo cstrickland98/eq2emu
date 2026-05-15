@@ -1,13 +1,16 @@
-add_library(eq2_db INTERFACE)
+add_library(eq2_db STATIC
+  src/mariadb_connection.cpp
+)
 add_library(eq2::db ALIAS eq2_db)
 
-target_include_directories(eq2_db INTERFACE
+target_include_directories(eq2_db PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 
-target_link_libraries(eq2_db INTERFACE
+target_link_libraries(eq2_db PUBLIC
   eq2::core
   eq2::external::threads
+  eq2::external::mariadb
 )
 
 eq2_target_defaults(eq2_db)

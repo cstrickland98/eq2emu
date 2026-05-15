@@ -11,6 +11,7 @@
 
 #include <eq2/db/repositories.h>
 #include <eq2/net/socket_transport.h>
+#include <eq2/protocol/play_character.h>
 #include <eq2/protocol/login_world.h>
 #include <eq2/protocol/stream_pipeline.h>
 #include <eq2/world/session.h>
@@ -59,7 +60,10 @@ class LiveWorldService {
   auto operator=(const LiveWorldService&) -> LiveWorldService& = delete;
 
   auto start() -> bool {
-    return client_transport_.start(config_.port);
+    return client_transport_.start(eq2::net::SocketEndpoint{
+        .address = config_.address,
+        .port = config_.port,
+    });
   }
 
   void stop() {
@@ -80,7 +84,11 @@ class LiveWorldService {
       return false;
     }
 
-    const auto sent = eq2::net::send_tcp_loopback(config_.login_port, *frame);
+    const auto sent = eq2::net::send_tcp(eq2::net::SocketEndpoint{
+                                             .address = config_.login_address,
+                                             .port = config_.login_port,
+                                         },
+                                         *frame);
     record_event(LiveWorldEvent{
         .type = sent ? LiveWorldEventType::registered_with_login
                      : LiveWorldEventType::registration_failed,
@@ -113,6 +121,14 @@ class LiveWorldService {
     };
   }
 
+  [[nodiscard]] auto make_login_handoff_response_frame(
+      const eq2::protocol::UserToWorldResponse& response) const
+      -> std::optional<std::vector<std::uint8_t>> {
+    const auto payload = eq2::protocol::encode_user_to_world_response_payload(response);
+    return eq2::protocol::encode_interserver_packet(
+        eq2::protocol::kServerOpUserToWorldResponse, payload);
+  }
+
   auto open_session_from_handoff(eq2::net::SessionId session,
                                  std::int32_t account_id,
                                  std::int32_t access_key) -> std::optional<WorldClientSession> {
@@ -138,6 +154,21 @@ class LiveWorldService {
   auto handoff_to_zone(const WorldClientSession& session, const CharacterSummary& character)
       -> ZoneHandoffResult {
     return core_.handoff_to_zone(session, character);
+  }
+
+  [[nodiscard]] auto make_play_character_response_payload(
+      const WorldClientSession& session,
+      const CharacterSelectResult& selection,
+      std::uint16_t client_version) const -> std::vector<std::uint8_t> {
+    return eq2::protocol::encode_play_character_response_payload(
+        eq2::protocol::PlayCharacterResponse{
+            .response = selection.accepted ? std::uint8_t{1} : std::uint8_t{0},
+            .server = selection.accepted ? config_.address : std::string{},
+            .port = selection.accepted ? config_.port : std::uint16_t{0},
+            .account_id = selection.accepted ? session.account_id : 0,
+            .access_code = selection.accepted ? session.access_key : 0,
+        },
+        client_version);
   }
 
   [[nodiscard]] auto events() const -> std::vector<LiveWorldEvent> {
@@ -173,6 +204,9 @@ class LiveWorldService {
 
     auto& pipeline = pipelines_[event.session.value];
     auto result = pipeline.receive_datagram(event.bytes);
+    for (const auto& packet : result.outbound) {
+      client_transport_.send(event.session, packet);
+    }
     for (const auto& stream_event : result.events) {
       record_stream_event(event.session, stream_event);
     }

@@ -51,9 +51,23 @@ class ZoneAdmissionFeature {
 
     if (result.admission.accepted && scripts_ != nullptr && script_sink_ != nullptr) {
       result.script_called = true;
+      auto event = eq2::scripting::zone_event(script_function_, request.zone.value,
+                                              request.character_id);
+      for (const auto& spawn : result.admission.snapshot.spawns) {
+        if (spawn.id.value == request.character_id) {
+          event.zone_safe_location = eq2::scripting::ScriptEvent::Position{
+              .x = spawn.position.x,
+              .y = spawn.position.y,
+              .z = spawn.position.z,
+              .heading = spawn.position.heading,
+          };
+          break;
+        }
+      }
+
       auto script_result = scripts_->call_event(
           script_id_,
-          eq2::scripting::zone_event(script_function_, request.zone.value, request.character_id),
+          std::move(event),
           *script_sink_);
       if (!script_result.has_value()) {
         result.script_error = script_result.error();

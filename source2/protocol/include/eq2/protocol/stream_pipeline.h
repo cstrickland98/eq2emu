@@ -8,6 +8,7 @@
 
 #include <eq2/protocol/application_packet.h>
 #include <eq2/protocol/combined_packet.h>
+#include <eq2/protocol/crc.h>
 #include <eq2/protocol/protocol_packet.h>
 #include <eq2/protocol/session.h>
 
@@ -47,7 +48,8 @@ class StreamPipeline {
 
   auto receive_datagram(std::span<const std::uint8_t> bytes) -> StreamPipelineResult {
     auto result = StreamPipelineResult{};
-    const auto packet = decode_protocol_packet(bytes);
+    const auto framed_bytes = strip_legacy_crc_if_present(bytes, options_.session_key);
+    const auto packet = decode_protocol_packet(framed_bytes);
     if (!packet.has_value()) {
       result.events.push_back(StreamEvent{
           .type = StreamEventType::malformed,
@@ -96,6 +98,20 @@ class StreamPipeline {
     return session_id_;
   }
 
+  auto encode_application_protocol_packet(std::span<const std::uint8_t> app_packet)
+      -> std::vector<std::uint8_t> {
+    if (!established_) {
+      return append_legacy_crc(encode_protocol_packet(kOpPacket, app_packet),
+                               options_.session_key);
+    }
+
+    PacketWriter writer;
+    writer.append_u16_be(next_out_sequence_++);
+    writer.append_bytes(app_packet);
+    return append_legacy_crc(encode_protocol_packet(kOpPacket, writer.bytes()),
+                             options_.session_key);
+  }
+
  private:
   void handle_session_request(const ProtocolPacketView& packet, StreamPipelineResult& result) {
     const auto request = decode_session_request(packet.payload);
@@ -125,6 +141,27 @@ class StreamPipeline {
   }
 
   void handle_app_packet(const ProtocolPacketView& packet, StreamPipelineResult& result) {
+    const auto sequenced_min_size =
+        2U + (options_.application_opcode_width == ApplicationOpcodeWidth::one_byte ? 1U : 2U);
+    if (established_ && packet.payload.size() >= sequenced_min_size) {
+      PacketReader reader(packet.payload);
+      const auto sequence = reader.read_u16_be();
+      if (sequence.has_value()) {
+        const auto sequenced_app =
+            decode_application_packet(packet.payload.subspan(2), options_.application_opcode_width);
+        if (sequenced_app.has_value()) {
+          next_in_sequence_ = static_cast<std::uint16_t>(*sequence + 1U);
+          result.outbound.push_back(encode_ack(*sequence, options_.session_key));
+          result.events.push_back(StreamEvent{
+              .type = StreamEventType::app_packet,
+              .protocol_opcode = packet.opcode,
+              .app_packet = sequenced_app,
+          });
+          return;
+        }
+      }
+    }
+
     const auto app = decode_application_packet(packet.payload, options_.application_opcode_width);
     if (!app.has_value()) {
       result.events.push_back(StreamEvent{
@@ -160,9 +197,17 @@ class StreamPipeline {
     }
   }
 
+  static auto encode_ack(std::uint16_t sequence, std::uint32_t key) -> std::vector<std::uint8_t> {
+    PacketWriter writer;
+    writer.append_u16_be(sequence);
+    return append_legacy_crc(encode_protocol_packet(kOpAck, writer.bytes()), key);
+  }
+
   StreamPipelineOptions options_;
   bool established_ = false;
   std::uint32_t session_id_ = 0;
+  std::uint16_t next_in_sequence_ = 0;
+  std::uint16_t next_out_sequence_ = 0;
 };
 
 }  // namespace eq2::protocol

@@ -44,6 +44,7 @@ struct LuaApi {
   using ToIntegerFn = LuaInteger (*)(lua_State*, int, int*);
   using PushCClosureFn = void (*)(lua_State*, LuaCFunction, int);
   using PushIntegerFn = void (*)(lua_State*, LuaInteger);
+  using PushNumberFn = void (*)(lua_State*, double);
   using PushStringFn = const char* (*)(lua_State*, const char*);
   using PushBooleanFn = void (*)(lua_State*, int);
 
@@ -80,6 +81,7 @@ struct LuaApi {
         !resolve(to_integer, "lua_tointegerx") ||
         !resolve(push_cclosure, "lua_pushcclosure") ||
         !resolve(push_integer, "lua_pushinteger") ||
+        !resolve(push_number, "lua_pushnumber") ||
         !resolve(push_string, "lua_pushstring") ||
         !resolve(push_boolean, "lua_pushboolean")) {
       FreeLibrary(module);
@@ -148,6 +150,7 @@ struct LuaApi {
   ToIntegerFn to_integer = nullptr;
   PushCClosureFn push_cclosure = nullptr;
   PushIntegerFn push_integer = nullptr;
+  PushNumberFn push_number = nullptr;
   PushStringFn push_string = nullptr;
   PushBooleanFn push_boolean = nullptr;
 #else
@@ -250,6 +253,23 @@ inline auto lua_event_name(lua_State* state) -> int {
   if (current_lua_api != nullptr && current_script_context != nullptr) {
     current_lua_api->push_string(state, current_script_context->event().function.c_str());
     return 1;
+  }
+#else
+  (void)state;
+#endif
+  return 0;
+}
+
+inline auto lua_get_current_zone_safe_location(lua_State* state) -> int {
+#ifdef _WIN32
+  if (current_lua_api != nullptr && current_script_context != nullptr) {
+    const auto safe = current_script_context->event().zone_safe_location.value_or(
+        ScriptEvent::Position{});
+    current_lua_api->push_number(state, safe.x);
+    current_lua_api->push_number(state, safe.y);
+    current_lua_api->push_number(state, safe.z);
+    current_lua_api->push_number(state, safe.heading);
+    return 4;
   }
 #else
   (void)state;
@@ -366,6 +386,8 @@ class LuaBackend final : public ScriptBackend {
     api_->set_global(state, "TargetId");
     api_->push_cclosure(state, detail::lua_event_name, 0);
     api_->set_global(state, "EventName");
+    api_->push_cclosure(state, detail::lua_get_current_zone_safe_location, 0);
+    api_->set_global(state, "GetCurrentZoneSafeLocation");
   }
 
   auto load_and_run_script(detail::lua_State* state, const LoadedScript& script)

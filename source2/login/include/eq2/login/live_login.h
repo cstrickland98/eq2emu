@@ -1,13 +1,11 @@
 #pragma once
 
 #include <cstdint>
-#include <iterator>
 #include <mutex>
 #include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -16,6 +14,7 @@
 #include <eq2/login/server.h>
 #include <eq2/login/world_registration.h>
 #include <eq2/protocol/application_packet.h>
+#include <eq2/protocol/login_response.h>
 #include <eq2/protocol/login_request.h>
 #include <eq2/protocol/packet_buffer.h>
 #include <eq2/protocol/protocol_packet.h>
@@ -26,6 +25,10 @@ namespace eq2::login {
 
 inline constexpr std::uint16_t kLoginRequestAppOpcode = 0x1234;
 inline constexpr std::uint16_t kLoginReplyAppOpcode = 0x1235;
+inline constexpr std::uint16_t kWorldListReplyAppOpcode = 0x1236;
+inline constexpr std::uint16_t kAllWorldsRequestAppOpcode = 0x1237;
+inline constexpr std::uint16_t kCharactersRequestAppOpcode = 0x1238;
+inline constexpr std::uint16_t kCharactersReplyAppOpcode = 0x1239;
 
 enum class LiveLoginEventType {
   transport_accepted,
@@ -53,6 +56,10 @@ struct LiveLoginOptions {
   std::uint16_t requested_port = 0;
   std::uint16_t login_request_opcode = kLoginRequestAppOpcode;
   std::uint16_t login_reply_opcode = kLoginReplyAppOpcode;
+  std::uint16_t world_list_reply_opcode = kWorldListReplyAppOpcode;
+  std::uint16_t all_worlds_request_opcode = kAllWorldsRequestAppOpcode;
+  std::uint16_t characters_request_opcode = kCharactersRequestAppOpcode;
+  std::uint16_t characters_reply_opcode = kCharactersReplyAppOpcode;
   eq2::protocol::ApplicationOpcodeWidth opcode_width =
       eq2::protocol::ApplicationOpcodeWidth::two_bytes;
 };
@@ -85,15 +92,31 @@ class LiveLoginService {
 
   auto start() -> bool {
     const auto port = options_.requested_port == 0 ? config_.port : options_.requested_port;
-    return transport_.start(port);
+    if (!tcp_transport_.start(eq2::net::SocketEndpoint{
+        .address = config_.address,
+        .port = port,
+    })) {
+      return false;
+    }
+
+    if (!udp_transport_.start(eq2::net::SocketEndpoint{
+        .address = config_.address,
+        .port = tcp_transport_.port(),
+    })) {
+      tcp_transport_.stop();
+      return false;
+    }
+
+    return true;
   }
 
   void stop() {
-    transport_.stop();
+    udp_transport_.stop();
+    tcp_transport_.stop();
   }
 
   [[nodiscard]] auto port() const -> std::uint16_t {
-    return transport_.port();
+    return tcp_transport_.port();
   }
 
   [[nodiscard]] auto events() const -> std::vector<LiveLoginEvent> {
@@ -127,11 +150,13 @@ class LiveLoginService {
         worlds_(worlds),
         supported_versions_(std::move(supported_versions)),
         options_(options),
-        transport_([this](eq2::net::SessionEvent event) { handle_transport_event(std::move(event)); }) {}
+        tcp_transport_([this](eq2::net::SessionEvent event) { handle_transport_event(std::move(event)); }),
+        udp_transport_([this](eq2::net::SessionEvent event) { handle_transport_event(std::move(event)); }) {}
   void handle_transport_event(eq2::net::SessionEvent event) {
     std::lock_guard lock(mutex_);
 
-    if (event.type == eq2::net::SessionEventType::accepted) {
+    if (event.type == eq2::net::SessionEventType::accepted ||
+        event.type == eq2::net::SessionEventType::connected) {
       events_.push_back(LiveLoginEvent{
           .type = LiveLoginEventType::transport_accepted,
           .session = event.session,
@@ -140,7 +165,8 @@ class LiveLoginService {
     }
 
     if (event.type == eq2::net::SessionEventType::disconnected) {
-      pipelines_.erase(event.session.value);
+      pipelines_.erase(session_key(event.session, event.transport));
+      release_session_account(event.session, event.transport);
       events_.push_back(LiveLoginEvent{
           .type = LiveLoginEventType::disconnected,
           .session = event.session,
@@ -153,18 +179,23 @@ class LiveLoginService {
       return;
     }
 
-    if (try_handle_world_registration(event)) {
+    if (event.transport == eq2::net::TransportKind::tcp && try_handle_world_registration(event)) {
       return;
     }
 
-    auto& pipeline = pipelines_[event.session.value];
+    auto& pipeline = pipeline_for(event.session, event.transport);
     auto result = pipeline.receive_datagram(event.bytes);
-    outbound_.insert(outbound_.end(),
-                     std::make_move_iterator(result.outbound.begin()),
-                     std::make_move_iterator(result.outbound.end()));
+    for (auto& packet : result.outbound) {
+      const auto protocol = eq2::protocol::decode_protocol_packet(packet);
+      if (event.transport == eq2::net::TransportKind::tcp && protocol.has_value() &&
+          protocol->opcode == eq2::protocol::kOpAck) {
+        continue;
+      }
+      send_or_capture(event.session, event.transport, std::move(packet));
+    }
 
     for (const auto& stream_event : result.events) {
-      handle_stream_event(event.session, stream_event);
+      handle_stream_event(event.session, event.transport, stream_event);
     }
   }
 
@@ -179,6 +210,9 @@ class LiveLoginService {
     }
 
     auto result = register_world_server(*packet, false, *worlds_);
+    if (result.status == WorldRegistrationStatus::accepted && result.world.has_value()) {
+      upsert_registered_world(*result.world);
+    }
     world_registration_results_.push_back(result);
     events_.push_back(LiveLoginEvent{
         .type = result.status == WorldRegistrationStatus::accepted
@@ -191,6 +225,7 @@ class LiveLoginService {
   }
 
   void handle_stream_event(eq2::net::SessionId session,
+                           eq2::net::TransportKind transport,
                            const eq2::protocol::StreamEvent& stream_event) {
     switch (stream_event.type) {
       case eq2::protocol::StreamEventType::session_requested:
@@ -201,10 +236,11 @@ class LiveLoginService {
         });
         break;
       case eq2::protocol::StreamEventType::app_packet:
-        handle_application_packet(session, stream_event);
+        handle_application_packet(session, transport, stream_event);
         break;
       case eq2::protocol::StreamEventType::disconnected:
-        pipelines_.erase(session.value);
+        pipelines_.erase(session_key(session, transport));
+        release_session_account(session, transport);
         events_.push_back(LiveLoginEvent{
             .type = LiveLoginEventType::disconnected,
             .session = session,
@@ -232,6 +268,7 @@ class LiveLoginService {
   }
 
   void handle_application_packet(eq2::net::SessionId session,
+                                 eq2::net::TransportKind transport,
                                  const eq2::protocol::StreamEvent& stream_event) {
     if (!stream_event.app_packet.has_value()) {
       events_.push_back(LiveLoginEvent{
@@ -244,6 +281,15 @@ class LiveLoginService {
     }
 
     const auto& packet = *stream_event.app_packet;
+    if (packet.opcode == options_.all_worlds_request_opcode) {
+      handle_world_description_request(session, transport);
+      return;
+    }
+    if (packet.opcode == options_.characters_request_opcode) {
+      handle_character_list_request(session, transport);
+      return;
+    }
+
     if (packet.opcode != options_.login_request_opcode) {
       events_.push_back(LiveLoginEvent{
           .type = LiveLoginEventType::unsupported,
@@ -294,11 +340,12 @@ class LiveLoginService {
 
     if (outcome.account.has_value()) {
       outcome.should_disconnect_existing_session =
-          !active_account_ids_.insert(outcome.account->id).second;
+          claim_session_account(session, transport, outcome.account->id);
+      session_client_versions_[session_key(session, transport)] = outcome.client_version;
     }
 
     login_outcomes_.push_back(outcome);
-    outbound_.push_back(encode_login_reply(outcome));
+    send_application_or_capture(session, transport, encode_login_reply_app(outcome));
     events_.push_back(LiveLoginEvent{
         .type = outcome.status == LoginPacketStatus::accepted ? LiveLoginEventType::login_accepted
                                                               : LiveLoginEventType::login_rejected,
@@ -310,15 +357,202 @@ class LiveLoginService {
     });
   }
 
-  [[nodiscard]] auto encode_login_reply(const LoginPacketOutcome& outcome) const
-      -> std::vector<std::uint8_t> {
-    eq2::protocol::PacketWriter payload;
-    payload.append_u8(static_cast<std::uint8_t>(outcome.reply_code));
-    payload.append_u32_le(outcome.account.has_value() ? static_cast<std::uint32_t>(outcome.account->id) : 0);
+  void handle_world_description_request(eq2::net::SessionId session,
+                                        eq2::net::TransportKind transport) {
+    const auto key = session_key(session, transport);
+    const auto account_iter = session_account_ids_.find(key);
+    const auto version_iter = session_client_versions_.find(key);
+    if (account_iter == session_account_ids_.end() ||
+        version_iter == session_client_versions_.end()) {
+      events_.push_back(LiveLoginEvent{
+          .type = LiveLoginEventType::unsupported,
+          .session = session,
+          .application_opcode = options_.all_worlds_request_opcode,
+          .reason = "world description request before login",
+      });
+      return;
+    }
 
-    const auto app_packet = eq2::protocol::encode_application_packet(
-        options_.login_reply_opcode, payload.bytes(), options_.opcode_width);
-    return eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket, app_packet);
+    send_application_or_capture(session, transport, encode_world_list_reply_app(version_iter->second));
+    send_application_or_capture(
+        session,
+        transport,
+        encode_character_list_reply_app(static_cast<std::uint32_t>(account_iter->second),
+                                        version_iter->second));
+    send_application_or_capture(
+        session,
+        transport,
+        encode_login_reply_app(static_cast<std::uint8_t>(10), 0, version_iter->second));
+  }
+
+  void handle_character_list_request(eq2::net::SessionId session,
+                                     eq2::net::TransportKind transport) {
+    const auto key = session_key(session, transport);
+    const auto account_iter = session_account_ids_.find(key);
+    const auto version_iter = session_client_versions_.find(key);
+    if (account_iter == session_account_ids_.end() ||
+        version_iter == session_client_versions_.end()) {
+      events_.push_back(LiveLoginEvent{
+          .type = LiveLoginEventType::unsupported,
+          .session = session,
+          .application_opcode = options_.characters_request_opcode,
+          .reason = "character list request before login",
+      });
+      return;
+    }
+
+    send_application_or_capture(
+        session,
+        transport,
+        encode_character_list_reply_app(static_cast<std::uint32_t>(account_iter->second),
+                                        version_iter->second));
+  }
+
+  void send_or_capture(eq2::net::SessionId session,
+                       eq2::net::TransportKind transport,
+                       std::vector<std::uint8_t> packet) {
+    if (transport == eq2::net::TransportKind::udp) {
+      udp_transport_.send(session, packet);
+    } else {
+      tcp_transport_.send(session, packet);
+    }
+    outbound_.push_back(std::move(packet));
+  }
+
+  void send_application_or_capture(eq2::net::SessionId session,
+                                   eq2::net::TransportKind transport,
+                                   std::vector<std::uint8_t> app_packet) {
+    const auto key = session_key(session, transport);
+    auto iter = pipelines_.find(key);
+    const auto protocol_packet = iter == pipelines_.end()
+                                     ? eq2::protocol::encode_protocol_packet(
+                                           eq2::protocol::kOpPacket, app_packet)
+                                     : iter->second.encode_application_protocol_packet(app_packet);
+    send_or_capture(session, transport, protocol_packet);
+  }
+
+  auto pipeline_for(eq2::net::SessionId session, eq2::net::TransportKind transport)
+      -> eq2::protocol::StreamPipeline& {
+    auto [iter, inserted] = pipelines_.try_emplace(
+        session_key(session, transport),
+        eq2::protocol::StreamPipelineOptions{
+            .application_opcode_width = options_.opcode_width,
+        });
+    (void)inserted;
+    return iter->second;
+  }
+
+  void upsert_registered_world(const RegisteredWorld& world) {
+    for (auto& registered : registered_worlds_) {
+      if (registered.account_id == world.account_id) {
+        registered = world;
+        return;
+      }
+    }
+
+    registered_worlds_.push_back(world);
+  }
+
+  [[nodiscard]] auto session_key(eq2::net::SessionId session,
+                                 eq2::net::TransportKind transport) const -> std::uint64_t {
+    return transport == eq2::net::TransportKind::udp ? (1ULL << 63U) | session.value
+                                                     : session.value;
+  }
+
+  auto claim_session_account(eq2::net::SessionId session,
+                             eq2::net::TransportKind transport,
+                             std::int32_t account_id) -> bool {
+    const auto key = session_key(session, transport);
+    const auto session_iter = session_account_ids_.find(key);
+    if (session_iter != session_account_ids_.end() && session_iter->second == account_id) {
+      const auto count_iter = active_account_refcounts_.find(account_id);
+      return count_iter != active_account_refcounts_.end() && count_iter->second > 1;
+    }
+
+    if (session_iter != session_account_ids_.end()) {
+      release_session_account(session, transport);
+    }
+
+    const auto already_active = active_account_refcounts_.contains(account_id);
+    ++active_account_refcounts_[account_id];
+    session_account_ids_[key] = account_id;
+    return already_active;
+  }
+
+  void release_session_account(eq2::net::SessionId session,
+                               eq2::net::TransportKind transport) {
+    const auto session_iter = session_account_ids_.find(session_key(session, transport));
+    if (session_iter == session_account_ids_.end()) {
+      return;
+    }
+
+    const auto account_id = session_iter->second;
+    session_account_ids_.erase(session_iter);
+    session_client_versions_.erase(session_key(session, transport));
+
+    const auto count_iter = active_account_refcounts_.find(account_id);
+    if (count_iter == active_account_refcounts_.end()) {
+      return;
+    }
+
+    if (count_iter->second <= 1) {
+      active_account_refcounts_.erase(count_iter);
+      return;
+    }
+
+    --count_iter->second;
+  }
+
+  [[nodiscard]] auto encode_login_reply_app(const LoginPacketOutcome& outcome) const
+      -> std::vector<std::uint8_t> {
+    return encode_login_reply_app(
+        static_cast<std::uint8_t>(outcome.reply_code),
+        outcome.account.has_value() ? static_cast<std::uint32_t>(outcome.account->id) : 0,
+        outcome.client_version);
+  }
+
+  [[nodiscard]] auto encode_login_reply_app(std::uint8_t reply_code,
+                                            std::uint32_t account_id,
+                                            std::int16_t client_version) const
+      -> std::vector<std::uint8_t> {
+    const auto payload = eq2::protocol::encode_login_reply_payload(
+        eq2::protocol::LoginReplyPayload{
+            .reply_code = reply_code,
+            .account_id = account_id,
+        },
+        client_version);
+
+    return eq2::protocol::encode_application_packet(
+        options_.login_reply_opcode, payload, options_.opcode_width);
+  }
+
+  [[nodiscard]] auto encode_world_list_reply_app(std::int16_t client_version) const
+      -> std::vector<std::uint8_t> {
+    auto worlds = std::vector<eq2::protocol::LoginWorldEntry>{};
+    worlds.reserve(registered_worlds_.size());
+    for (const auto& world : registered_worlds_) {
+      worlds.push_back(eq2::protocol::LoginWorldEntry{
+          .world_id = world.account_id,
+          .display_name = world.display_name,
+          .address = world.address,
+          .development_server = world.is_development_server,
+      });
+    }
+
+    const auto payload = eq2::protocol::encode_login_world_list_payload(
+        eq2::protocol::LoginWorldListPayload{.worlds = std::move(worlds)},
+        client_version);
+    return eq2::protocol::encode_application_packet(
+        options_.world_list_reply_opcode, payload, options_.opcode_width);
+  }
+
+  [[nodiscard]] auto encode_character_list_reply_app(std::uint32_t account_id,
+                                                     std::int16_t client_version) const
+      -> std::vector<std::uint8_t> {
+    const auto payload =
+        eq2::protocol::encode_empty_character_list_payload(account_id, client_version);
+    return eq2::protocol::encode_application_packet(
+        options_.characters_reply_opcode, payload, options_.opcode_width);
   }
 
   LoginServerConfig config_;
@@ -326,14 +560,18 @@ class LiveLoginService {
   eq2::db::WorldRegistrationRepository* worlds_ = nullptr;
   eq2::protocol::OpcodeVersionRanges supported_versions_;
   LiveLoginOptions options_;
-  eq2::net::TcpSocketServer transport_;
+  eq2::net::TcpSocketServer tcp_transport_;
+  eq2::net::UdpSocketServer udp_transport_;
 
   mutable std::mutex mutex_;
   std::unordered_map<std::uint64_t, eq2::protocol::StreamPipeline> pipelines_;
-  std::unordered_set<std::int32_t> active_account_ids_;
+  std::unordered_map<std::uint64_t, std::int32_t> session_account_ids_;
+  std::unordered_map<std::uint64_t, std::int16_t> session_client_versions_;
+  std::unordered_map<std::int32_t, std::size_t> active_account_refcounts_;
   std::vector<LiveLoginEvent> events_;
   std::vector<LoginPacketOutcome> login_outcomes_;
   std::vector<WorldRegistrationResult> world_registration_results_;
+  std::vector<RegisteredWorld> registered_worlds_;
   std::vector<std::vector<std::uint8_t>> outbound_;
 };
 

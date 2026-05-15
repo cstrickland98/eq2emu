@@ -1,0 +1,22 @@
+; Source2 login server template for the current eq2emu target database.
+; Copy this file outside source control and replace password before serving.
+
+[login]
+address = 0.0.0.0
+port = 9100
+client_version = 546
+account_creation_allowed = false
+opcode_source = database
+opcode_width = 1
+
+[db]
+host = 192.168.1.243
+port = 3306
+name = eq2ls
+user = eq2emu
+password = change-me
+tls = false
+
+[logging]
+level = info
+console = true

@@ -72,10 +72,15 @@ Start after Phase 7 proves world handoff. Use:
   - world-to-zone handoff adapter,
   - SQL-backed zone metadata load,
   - zone runtime snapshot containing the admitted player spawn.
+- Added source2 zone snapshot and update payload serialization for the current runtime state:
+  - zone id,
+  - tick,
+  - spawn id/name/position/hit points,
+  - update type/spawn/position/value.
 
 Compatibility notes:
 
-- Spawn serialization and full client fanout packet generation are not implemented yet. The runtime produces stable snapshots and update records for later packet work.
+- Source2 snapshot/update payload serialization exists for the current runtime model. Full legacy spawn packet fanout and client opcode routing remain future live-client work.
 - The admitted player spawn is a placeholder with character id, name, safe location, and baseline hit points. Full player stat/equipment/spawn hydration remains future feature migration work.
 - Lua hooks remain behind the scripting boundary and are not called from the zone bootstrap path until Phase 9 scripting integration is in place.
 

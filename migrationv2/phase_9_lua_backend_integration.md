@@ -79,11 +79,13 @@ Start with:
   - Lua error isolation and logging,
   - missing function handling,
   - smoke calls for item, quest, spell, spawn, zone, player, and region event categories,
+  - `GetCurrentZoneSafeLocation` for the zone admission feature path,
   - owner-posted mutation verification.
 
 Compatibility notes:
 
 - The source2 Lua API is intentionally strict and small. Existing legacy APIs listed under `docs/lua_functions/` are not implicitly available.
+- `GetCurrentZoneSafeLocation` is available when a zone script event carries safe-location context, which is currently supplied by the zone admission feature.
 - Script mutations must post to owner sinks; Lua does not receive direct access to world or zone internals.
 - The runtime loader is Windows-focused for this phase. Non-Windows builds receive an explicit unavailable result until a platform loader is added.
 - Legacy Lua compatibility strategy is staged API subset first, then adapter functions as migrated gameplay features demand them.

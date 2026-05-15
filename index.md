@@ -37,8 +37,9 @@ Welcome to the **EQ2Emu** documentation. This index provides quick links to all 
 
 ## 🚀 Running EQ2Emu
 
-> Coming soon: How to configure, build and launch the server.
+> Guides for configuring, building, and launching server components.
 
+- [Source2 Login Server Guide](./docs/source2_login_server_guide.md)
 - (To be added) [Server Installation & Running Guide](./docs/installation.md)
 
 ---

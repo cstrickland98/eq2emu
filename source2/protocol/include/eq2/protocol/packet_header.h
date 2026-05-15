@@ -62,6 +62,15 @@ inline auto write_application_header(PacketWriter& writer,
   return 2;
 }
 
+inline auto application_header_size(std::uint16_t opcode,
+                                    ApplicationOpcodeWidth width) -> std::size_t {
+  if (width == ApplicationOpcodeWidth::one_byte) {
+    return 1;
+  }
+
+  return (opcode & 0x00ffU) == 0 ? 3 : 2;
+}
+
 inline auto read_application_header(PacketReader& reader,
                                     ApplicationOpcodeWidth width) -> std::optional<ApplicationHeader> {
   if (width == ApplicationOpcodeWidth::one_byte) {

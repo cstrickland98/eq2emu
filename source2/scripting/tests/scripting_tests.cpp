@@ -268,6 +268,25 @@ void real_lua_backend_loads_calls_reloads_and_posts_owner_mutations() {
   require_eq(sink.mutations.back().command, std::string_view("actor"),
              "real Lua backend uses reloaded script source");
   require_eq(sink.mutations.back().ids.back(), 42, "real Lua backend exposes ActorId API");
+
+  engine.reload_script(id,
+                       "function enter() "
+                       "local x,y,z,h = GetCurrentZoneSafeLocation() "
+                       "PostZoneMutation('safe', math.floor(x + y + z + h)) "
+                       "end");
+  result = engine.call_event(
+      id,
+      eq2::scripting::zone_event(
+          "enter",
+          10,
+          42,
+          eq2::scripting::ScriptEvent::Position{.x = 1.5F, .y = 2.5F, .z = 3.5F, .heading = 4.5F}),
+      sink);
+  require(result.has_value(), "real Lua backend exposes safe-location API");
+  require_eq(sink.mutations.back().command, std::string_view("safe"),
+             "real Lua backend calls safe-location script");
+  require_eq(sink.mutations.back().ids.back(), 12,
+             "real Lua backend passes current zone safe location");
 }
 
 void real_lua_backend_isolates_lua_errors_and_missing_functions() {

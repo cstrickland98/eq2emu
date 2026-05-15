@@ -65,20 +65,27 @@ Start with:
   - `SqlWorldRegistrationRepository`,
   - `SqlCharacterListRepository`,
   - `SqlZoneBootstrapRepository`.
-- Added a `MariaDbConnection` adapter seam that stores MariaDB config and reports `unavailable` when the MariaDB C API adapter is not enabled in the current build.
+- Added a `MariaDbConnection` adapter seam with a real MariaDB C API path when
+  connector headers/libraries are available, and explicit `unavailable`
+  behavior when the adapter is not enabled in a non-connector build.
+- Hardened prepared statement result fetching by binding scratch buffers before
+  `mysql_stmt_fetch` and then reading complete column values through
+  `mysql_stmt_fetch_column`.
+- Extended source2 CMake dependency discovery for MariaDB through vcpkg manifest mode or an explicit `EQ2_MARIADB_ROOT` SDK path.
 - Kept login/world code insulated from raw database APIs by depending on repository interfaces.
 - Extended `eq2_db_tests` to verify SQL repository query boundaries, parameter use, row mapping, and explicit unavailable behavior for the disabled MariaDB adapter.
 - Verification:
-  - `cmake --build build\source2 --config Debug --target eq2_db_tests`: passed.
-  - `ctest --test-dir build\source2 -C Debug -R eq2_db_tests --output-on-failure`: passed.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -UseVcpkg -LiveSmoke -BuildDir build\source2-vcpkg-user-verify`: passed with 110 registered tests, 109 executed/passed, and 1 skipped opt-in target live login gate.
 
 ## Dependency Note
 
-The local workspace did not expose a MariaDB/MySQL C connector library through the source2 CMake dependency graph. This phase therefore completes the repository implementation and adapter seam, while keeping the concrete C API driver disabled instead of adding unverified include/library paths. Enabling the C API driver is a build-environment task once connector headers and libraries are available.
+The current local vcpkg-backed build enables MariaDB Connector/C through
+`libmariadb`, builds `MariaDbConnection`, and deploys the runtime DLLs beside
+the owner-facing source2 executables. Live validation against the requested
+MariaDB host still requires TCP `3306` reachability to `192.168.1.243`.
 
 ## Verification Commands
 
 ```powershell
-cmake --build build\source2 --config Debug --target eq2_db_tests eq2_login_characterization_tests
-ctest --test-dir build\source2 -C Debug -R "db|login_characterization" --output-on-failure
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\source2_ci.ps1 -UseVcpkg -LiveSmoke -BuildDir build\source2-vcpkg-user-verify
 ```

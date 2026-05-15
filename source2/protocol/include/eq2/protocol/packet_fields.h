@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <span>
@@ -35,6 +36,24 @@ inline void append_i16_le(PacketWriter& writer, std::int16_t value) {
 
 inline void append_i32_le(PacketWriter& writer, std::int32_t value) {
   writer.append_u32_le(static_cast<std::uint32_t>(value));
+}
+
+inline auto read_f32_le(PacketReader& reader) -> std::optional<float> {
+  const auto value = reader.read_u32_le();
+  if (!value.has_value()) {
+    return std::nullopt;
+  }
+
+  auto result = 0.0F;
+  auto raw = *value;
+  std::memcpy(&result, &raw, sizeof(result));
+  return result;
+}
+
+inline void append_f32_le(PacketWriter& writer, float value) {
+  auto raw = std::uint32_t{0};
+  std::memcpy(&raw, &value, sizeof(raw));
+  writer.append_u32_le(raw);
 }
 
 inline auto read_eq2_8bit_string(PacketReader& reader) -> std::optional<std::string> {

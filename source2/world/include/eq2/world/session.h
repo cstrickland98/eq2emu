@@ -21,6 +21,7 @@ namespace eq2::world {
 struct WorldServerConfig {
   std::string address = "0.0.0.0";
   std::uint16_t port = 9101;
+  std::string advertised_address;
   std::string login_address = "127.0.0.1";
   std::uint16_t login_port = 9100;
   std::string world_name = "Source2 World";
@@ -44,17 +45,35 @@ inline auto parse_config_u16_or(std::string_view value, std::uint16_t fallback) 
   return static_cast<std::uint16_t>(parsed);
 }
 
+inline auto parse_config_u32_or(std::string_view value, std::uint32_t fallback) -> std::uint32_t {
+  auto parsed = std::uint32_t{0};
+  const auto* begin = value.data();
+  const auto* end = value.data() + value.size();
+  const auto [ptr, error] = std::from_chars(begin, end, parsed);
+  if (error != std::errc{} || ptr != end) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
 inline auto load_world_server_config(const eq2::core::ConfigProvider& config) -> WorldServerConfig {
   return WorldServerConfig{
       .address = config.get("world.address").value_or("0.0.0.0"),
       .port = parse_config_u16_or(config.get("world.port").value_or("9101"), 9101),
-      .login_address = config.get("login.address").value_or("127.0.0.1"),
-      .login_port = parse_config_u16_or(config.get("login.port").value_or("9100"), 9100),
+      .advertised_address = config.get("world.advertised_address").value_or(
+          config.get("world.external_address").value_or("")),
+      .login_address = config.get("login.remote_address").value_or(
+          config.get("login.address").value_or("127.0.0.1")),
+      .login_port = parse_config_u16_or(
+          config.get("login.remote_port").value_or(config.get("login.port").value_or("9100")),
+          9100),
       .world_name = config.get("world.name").value_or("Source2 World"),
       .world_account = config.get("world.account").value_or(""),
       .world_password = config.get("world.password").value_or(""),
       .protocol_version = config.get("world.protocol_version").value_or("0.5.0"),
       .server_version = config.get("world.server_version").value_or("source2"),
+      .database_version = parse_config_u32_or(config.get("world.database_version").value_or("0"), 0),
   };
 }
 
@@ -99,9 +118,12 @@ class ZoneHandoff {
 
 inline auto make_world_registration_frame(const WorldServerConfig& config)
     -> std::optional<std::vector<std::uint8_t>> {
+  const auto advertised_address = config.advertised_address.empty()
+                                      ? config.address
+                                      : config.advertised_address;
   const auto payload = eq2::protocol::encode_server_ls_info_payload(eq2::protocol::ServerLsInfo{
       .world_name = config.world_name,
-      .address = config.address,
+      .address = advertised_address,
       .account = config.world_account,
       .password = config.world_password,
       .protocol_version = config.protocol_version,
