@@ -14,6 +14,7 @@
 #include <eq2/protocol/play_character.h>
 #include <eq2/protocol/protocol_packet.h>
 #include <eq2/protocol/session.h>
+#include <eq2/protocol/stream_pipeline.h>
 
 #include <algorithm>
 #include <array>
@@ -743,6 +744,54 @@ void delete_character_request_and_response_packets_match_legacy_login_layouts() 
           "truncated delete request is rejected");
 }
 
+void stream_pipeline_handles_session_handshake_and_app_dispatch() {
+  eq2::protocol::StreamPipeline pipeline(eq2::protocol::StreamPipelineOptions{
+      .session_key = 0x33624702,
+  });
+  const auto session_request =
+      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpSessionRequest,
+                                            eq2::protocol::encode_session_request(
+                                                eq2::protocol::SessionRequest{
+                                                    .unknown_a = 0,
+                                                    .session = 0x01020304,
+                                                    .max_length = 512,
+                                                }));
+
+  const auto handshake = pipeline.receive_datagram(session_request);
+  require_eq(handshake.events.size(), static_cast<std::size_t>(1),
+             "stream pipeline emits one session event");
+  require_eq(handshake.events.front().type, eq2::protocol::StreamEventType::session_requested,
+             "stream pipeline identifies session request");
+  require(pipeline.established(), "stream pipeline records established session");
+  require_eq(pipeline.session_id(), static_cast<std::uint32_t>(0x01020304),
+             "stream pipeline records session id");
+  require_eq(handshake.outbound.size(), static_cast<std::size_t>(1),
+             "stream pipeline emits session response bytes");
+
+  const auto response = eq2::protocol::decode_protocol_packet(handshake.outbound.front());
+  require(response.has_value(), "stream pipeline response is a protocol packet");
+  require_eq(response->opcode, eq2::protocol::kOpSessionResponse,
+             "stream pipeline response uses session response opcode");
+  const auto decoded_response = eq2::protocol::decode_session_response(response->payload);
+  require(decoded_response.has_value(), "stream pipeline response payload decodes");
+  require_eq(decoded_response->session, static_cast<std::uint32_t>(0x01020304),
+             "stream pipeline response keeps session id");
+
+  const auto app_payload =
+      eq2::protocol::encode_application_packet(0x1234, std::array<std::uint8_t, 2>{0xaa, 0xbb});
+  const auto app_datagram =
+      eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket, app_payload);
+  const auto app_result = pipeline.receive_datagram(app_datagram);
+  require_eq(app_result.events.size(), static_cast<std::size_t>(1),
+             "stream pipeline emits one app packet event");
+  require_eq(app_result.events.front().type, eq2::protocol::StreamEventType::app_packet,
+             "stream pipeline identifies app packet");
+  require(app_result.events.front().app_packet.has_value(),
+          "stream pipeline carries decoded app packet");
+  require_eq(app_result.events.front().app_packet->opcode, static_cast<std::uint16_t>(0x1234),
+             "stream pipeline carries app opcode");
+}
+
 }  // namespace
 
 int main() {
@@ -764,6 +813,7 @@ int main() {
   login_request_version_fallbacks_match_phase1_inventory();
   play_character_request_and_response_packets_match_legacy_login_layouts();
   delete_character_request_and_response_packets_match_legacy_login_layouts();
+  stream_pipeline_handles_session_handshake_and_app_dispatch();
 
   if (failures != 0) {
     std::cerr << failures << " protocol assertion(s) failed\n";

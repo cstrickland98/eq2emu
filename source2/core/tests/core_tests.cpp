@@ -4,6 +4,7 @@
 #include <eq2/core/executor.h>
 #include <eq2/core/log.h>
 #include <eq2/core/result.h>
+#include <eq2/core/runtime_config.h>
 #include <eq2/core/shutdown.h>
 #include <eq2/core/timer.h>
 
@@ -13,6 +14,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <span>
 #include <string_view>
 #include <thread>
@@ -88,6 +90,43 @@ void log_sink_receives_structured_records() {
   require_eq(sink.records.front().level, eq2::core::LogLevel::warning, "log record carries level");
   require_eq(sink.records.front().component, "login", "log record carries component");
   require_eq(sink.records.front().message, "bad client version", "log record carries message");
+}
+
+void console_log_sink_formats_records() {
+  std::ostringstream output;
+  eq2::core::ConsoleLogSink sink(output);
+  eq2::core::log(sink, eq2::core::LogLevel::error, "login", "bad credentials");
+
+  require_eq(output.str(), "[error] login: bad credentials\n",
+             "console log sink formats level, component, and message");
+}
+
+void runtime_config_validates_and_loads_typed_values() {
+  eq2::core::MapConfig config;
+  config.set("login.address", "127.0.0.1");
+  config.set("login.port", "9100");
+  config.set("world.address", "127.0.0.1");
+  config.set("world.port", "9200");
+  config.set("login.remote_address", "127.0.0.2");
+  config.set("login.remote_port", "9300");
+  config.set("login.account_creation_allowed", "true");
+  config.set("logging.level", "debug");
+
+  const auto loaded = eq2::core::load_runtime_config(config);
+  require(loaded.has_value(), "valid runtime config loads");
+  require_eq(loaded.value().login_listen.port, static_cast<std::uint16_t>(9100),
+             "runtime config carries login port");
+  require_eq(loaded.value().world_listen.port, static_cast<std::uint16_t>(9200),
+             "runtime config carries world port");
+  require(loaded.value().account_creation_allowed,
+          "runtime config carries account creation flag");
+
+  eq2::core::MapConfig bad;
+  bad.set("login.port", "not-a-port");
+  const auto rejected = eq2::core::load_runtime_config(bad);
+  require(!rejected.has_value(), "invalid runtime config is rejected");
+  require_eq(rejected.error().code, eq2::core::ErrorCode::invalid_argument,
+             "invalid runtime config reports invalid argument");
 }
 
 void manual_clock_drives_deadline_and_interval_timers() {
@@ -202,6 +241,8 @@ int main() {
   result_carries_success_or_error();
   map_config_reads_strings_and_booleans();
   log_sink_receives_structured_records();
+  console_log_sink_formats_records();
+  runtime_config_validates_and_loads_typed_values();
   manual_clock_drives_deadline_and_interval_timers();
   byte_buffer_writes_endian_values();
   endian_helpers_read_and_write_spans_and_arrays();

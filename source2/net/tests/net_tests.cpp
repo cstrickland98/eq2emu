@@ -1,13 +1,17 @@
 #include <eq2/net/session.h>
+#include <eq2/net/socket_transport.h>
 #include <eq2/net/tcp_server.h>
 #include <eq2/net/udp_stream.h>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
 #include <span>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -130,6 +134,66 @@ void udp_stream_server_handles_datagram_sessions() {
           "UDP stream preserves outbound datagram bytes");
 }
 
+void real_tcp_transport_exchanges_loopback_bytes() {
+  std::mutex mutex;
+  std::vector<eq2::net::SessionEvent> events;
+  eq2::net::TcpSocketServer server([&](eq2::net::SessionEvent event) {
+    std::lock_guard lock(mutex);
+    events.push_back(std::move(event));
+  });
+
+  require(server.start(), "real TCP transport starts on loopback");
+  require(server.port() != 0, "real TCP transport binds a local port");
+
+  const std::array<std::uint8_t, 3> bytes{0x10, 0x20, 0x30};
+  require(eq2::net::send_tcp_loopback(server.port(), bytes),
+          "real TCP transport accepts loopback client bytes");
+
+  auto observed = false;
+  for (auto attempt = 0; attempt < 50 && !observed; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::lock_guard lock(mutex);
+    for (const auto& event : events) {
+      observed = observed || (event.type == eq2::net::SessionEventType::received &&
+                              event.transport == eq2::net::TransportKind::tcp &&
+                              event.bytes == std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+    }
+  }
+
+  server.stop();
+  require(observed, "real TCP transport emits received event with loopback bytes");
+}
+
+void real_udp_transport_exchanges_loopback_datagrams() {
+  std::mutex mutex;
+  std::vector<eq2::net::SessionEvent> events;
+  eq2::net::UdpSocketServer server([&](eq2::net::SessionEvent event) {
+    std::lock_guard lock(mutex);
+    events.push_back(std::move(event));
+  });
+
+  require(server.start(), "real UDP transport starts on loopback");
+  require(server.port() != 0, "real UDP transport binds a local port");
+
+  const std::array<std::uint8_t, 2> bytes{0xaa, 0xbb};
+  require(eq2::net::send_udp_loopback(server.port(), bytes),
+          "real UDP transport accepts loopback datagrams");
+
+  auto observed = false;
+  for (auto attempt = 0; attempt < 50 && !observed; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::lock_guard lock(mutex);
+    for (const auto& event : events) {
+      observed = observed || (event.type == eq2::net::SessionEventType::received &&
+                              event.transport == eq2::net::TransportKind::udp &&
+                              event.bytes == std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+    }
+  }
+
+  server.stop();
+  require(observed, "real UDP transport emits received event with loopback datagram");
+}
+
 }  // namespace
 
 int main() {
@@ -137,6 +201,8 @@ int main() {
   write_queue_applies_backpressure_and_drains_fifo();
   tcp_server_stop_disconnects_sessions_and_rejects_new_accepts();
   udp_stream_server_handles_datagram_sessions();
+  real_tcp_transport_exchanges_loopback_bytes();
+  real_udp_transport_exchanges_loopback_datagrams();
 
   if (failures != 0) {
     std::cerr << failures << " net assertion(s) failed\n";

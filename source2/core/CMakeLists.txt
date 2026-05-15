@@ -9,6 +9,10 @@ target_link_libraries(eq2_core INTERFACE
   eq2::external::threads
 )
 
+target_compile_definitions(eq2_core INTERFACE
+  EQ2_SOURCE2_VERSION="${PROJECT_VERSION}"
+)
+
 eq2_target_defaults(eq2_core)
 
 if(BUILD_TESTING)

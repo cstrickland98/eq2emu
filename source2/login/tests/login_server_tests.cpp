@@ -1,15 +1,24 @@
 #include <eq2/core/config.h>
 #include <eq2/db/fake_database.h>
+#include <eq2/db/query.h>
+#include <eq2/db/sql_repositories.h>
+#include <eq2/login/live_login.h>
 #include <eq2/login/server.h>
+#include <eq2/protocol/application_packet.h>
 #include <eq2/protocol/interserver_packet.h>
 #include <eq2/protocol/packet_buffer.h>
+#include <eq2/protocol/protocol_packet.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <span>
+#include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -37,6 +46,62 @@ auto supported_login_versions() -> eq2::protocol::OpcodeVersionRanges {
   return ranges;
 }
 
+class ScriptedLoginConnection final : public eq2::db::QueryConnection {
+ public:
+  auto execute(const eq2::db::QueryRequest& request)
+      -> eq2::core::Result<eq2::db::QueryResult> override {
+    requests.push_back(request);
+
+    if (request.sql.find("select id, name from account") != std::string::npos &&
+        request.parameters.size() >= 2) {
+      const auto& username = request.parameters[0];
+      const auto& password = request.parameters[1];
+      if (username == "tester" && password == "correct") {
+        return row(42, "tester");
+      }
+      return eq2::core::Result<eq2::db::QueryResult>::success(eq2::db::QueryResult{});
+    }
+
+    if (request.sql.find("select id from account") != std::string::npos &&
+        !request.parameters.empty()) {
+      if (existing_accounts_contains(request.parameters.front())) {
+        return eq2::core::Result<eq2::db::QueryResult>::success(eq2::db::QueryResult{
+            .rows = {eq2::db::QueryRow{.columns = {{"id", "42"}}}},
+        });
+      }
+      return eq2::core::Result<eq2::db::QueryResult>::success(eq2::db::QueryResult{});
+    }
+
+    if (request.sql.find("insert into account") != std::string::npos &&
+        !request.parameters.empty()) {
+      created_accounts.push_back(request.parameters.front());
+      return row(88, request.parameters.front());
+    }
+
+    return eq2::core::Result<eq2::db::QueryResult>::success(eq2::db::QueryResult{});
+  }
+
+  std::vector<eq2::db::QueryRequest> requests;
+  std::vector<std::string> created_accounts;
+
+ private:
+  static auto row(std::int32_t id, std::string_view name)
+      -> eq2::core::Result<eq2::db::QueryResult> {
+    return eq2::core::Result<eq2::db::QueryResult>::success(eq2::db::QueryResult{
+        .rows =
+            {
+                eq2::db::QueryRow{
+                    .columns = {{"id", std::to_string(id)}, {"name", std::string(name)}}},
+            },
+        .affected_rows = 1,
+    });
+  }
+
+  static auto existing_accounts_contains(std::string_view username) -> bool {
+    return username == "tester";
+  }
+};
+
 auto make_login_fixture(std::int16_t version) -> std::vector<std::uint8_t> {
   return eq2::protocol::encode_legacy_login_request_fixture(eq2::protocol::LoginRequest{
       .access_code = "station",
@@ -44,6 +109,45 @@ auto make_login_fixture(std::int16_t version) -> std::vector<std::uint8_t> {
       .password = "correct",
       .version = version,
   });
+}
+
+auto make_live_login_frame(std::string_view username,
+                           std::string_view password,
+                           std::int16_t version) -> std::vector<std::uint8_t> {
+  const auto login_payload = eq2::protocol::encode_legacy_login_request_fixture(
+      eq2::protocol::LoginRequest{
+          .access_code = "station",
+          .username = std::string(username),
+          .password = std::string(password),
+          .version = version,
+      });
+  const auto app_packet = eq2::protocol::encode_application_packet(
+      eq2::login::kLoginRequestAppOpcode, login_payload);
+  return eq2::protocol::encode_protocol_packet(eq2::protocol::kOpPacket, app_packet);
+}
+
+auto wait_for_login_count(const eq2::login::LiveLoginService& service, std::size_t count) -> bool {
+  for (auto attempt = 0; attempt < 80; ++attempt) {
+    if (service.login_outcomes().size() >= count) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  }
+  return false;
+}
+
+auto wait_for_event(const eq2::login::LiveLoginService& service,
+                    eq2::login::LiveLoginEventType type) -> bool {
+  for (auto attempt = 0; attempt < 80; ++attempt) {
+    const auto events = service.events();
+    if (std::any_of(events.begin(), events.end(), [type](const auto& event) {
+          return event.type == type;
+        })) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  }
+  return false;
 }
 
 auto make_ls_info_frame(std::string_view account, std::string_view password)
@@ -161,6 +265,98 @@ void world_registration_uses_protocol_frame_and_db_repository() {
              "accepted world registration carries display name");
 }
 
+void live_login_slice_uses_real_tcp_protocol_pipeline_and_sql_repository() {
+  auto connection = std::make_shared<ScriptedLoginConnection>();
+  eq2::db::SqlLoginAccountRepository accounts(connection);
+  eq2::login::LiveLoginService service(
+      eq2::login::LoginServerConfig{.address = "127.0.0.1", .port = 0},
+      accounts,
+      supported_login_versions());
+
+  require(service.start(), "live login service starts real loopback TCP transport");
+  require(service.port() != 0, "live login service binds an ephemeral test port");
+
+  require(eq2::net::send_tcp_loopback(service.port(), make_live_login_frame("tester", "correct", 546)),
+          "live login smoke harness sends valid login over real TCP");
+  require(wait_for_login_count(service, 1), "live login service handles valid login frame");
+  auto outcomes = service.login_outcomes();
+  require_eq(outcomes[0].status, eq2::login::LoginPacketStatus::accepted,
+             "live login accepts valid SQL-backed credentials");
+  require_eq(outcomes[0].reply_code, eq2::login::LoginReplyCode::accepted,
+             "live login preserves accepted reply code");
+  require(outcomes[0].account.has_value(), "live login returns SQL-backed account");
+  require_eq(outcomes[0].account->id, 42, "live login reads account id from SQL repository");
+  require(!connection->requests.empty(), "live login exercises SQL account repository");
+  require_eq(connection->requests.front().parameters.front(), std::string_view("tester"),
+             "live login passes username through SQL repository parameters");
+  require(!service.outbound_packets().empty(), "live login captures protocol reply boundary");
+
+  require(eq2::net::send_tcp_loopback(service.port(), make_live_login_frame("tester", "correct", 546)),
+          "live login smoke harness sends duplicate login over real TCP");
+  require(wait_for_login_count(service, 2), "live login service handles duplicate login frame");
+  outcomes = service.login_outcomes();
+  require(outcomes[1].should_disconnect_existing_session,
+          "live login flags duplicate session behavior");
+
+  require(eq2::net::send_tcp_loopback(service.port(), make_live_login_frame("tester", "wrong", 546)),
+          "live login smoke harness sends invalid password over real TCP");
+  require(wait_for_login_count(service, 3), "live login service handles invalid password frame");
+  outcomes = service.login_outcomes();
+  require_eq(outcomes[2].reply_code, eq2::login::LoginReplyCode::invalid_username_or_password,
+             "live login preserves invalid password reply code");
+
+  require(eq2::net::send_tcp_loopback(service.port(), make_live_login_frame("tester", "correct", 1208)),
+          "live login smoke harness sends bad client version over real TCP");
+  require(wait_for_login_count(service, 4), "live login service handles bad client version frame");
+  outcomes = service.login_outcomes();
+  require_eq(outcomes[3].reply_code, eq2::login::LoginReplyCode::bad_client_version,
+             "live login preserves bad client version reply code");
+
+  const std::vector<std::uint8_t> malformed{0x00};
+  require(eq2::net::send_tcp_loopback(service.port(), malformed),
+          "live login smoke harness sends malformed protocol bytes");
+  require(wait_for_event(service, eq2::login::LiveLoginEventType::malformed),
+          "live login records malformed protocol packet");
+
+  const std::vector<std::uint8_t> empty_payload;
+  const auto disconnect = eq2::protocol::encode_protocol_packet(
+      eq2::protocol::kOpSessionDisconnect, empty_payload);
+  require(eq2::net::send_tcp_loopback(service.port(), disconnect),
+          "live login smoke harness sends protocol disconnect");
+  require(wait_for_event(service, eq2::login::LiveLoginEventType::disconnected),
+          "live login records graceful disconnect");
+
+  service.stop();
+}
+
+void live_login_slice_can_create_accounts_when_policy_allows_it() {
+  auto connection = std::make_shared<ScriptedLoginConnection>();
+  eq2::db::SqlLoginAccountRepository accounts(connection);
+  eq2::login::LiveLoginService service(
+      eq2::login::LoginServerConfig{
+          .address = "127.0.0.1",
+          .port = 0,
+          .account_creation_allowed = true,
+      },
+      accounts,
+      supported_login_versions());
+
+  require(service.start(), "live login creation test starts real loopback TCP transport");
+  require(eq2::net::send_tcp_loopback(service.port(), make_live_login_frame("newbie", "newpass", 546)),
+          "live login smoke harness sends new account request over real TCP");
+  require(wait_for_login_count(service, 1), "live login service handles account creation frame");
+
+  const auto outcomes = service.login_outcomes();
+  require_eq(outcomes.front().reply_code, eq2::login::LoginReplyCode::accepted,
+             "live login accepts account creation when configured");
+  require(outcomes.front().account.has_value(), "live login returns created account");
+  require_eq(outcomes.front().account->id, 88, "live login maps created account id");
+  require_eq(connection->created_accounts.front(), std::string_view("newbie"),
+             "live login creates account through SQL repository boundary");
+
+  service.stop();
+}
+
 }  // namespace
 
 int main() {
@@ -168,6 +364,8 @@ int main() {
   client_login_reaches_legacy_success_outcome_through_source2_boundaries();
   unsupported_client_version_reaches_legacy_bad_version_outcome();
   world_registration_uses_protocol_frame_and_db_repository();
+  live_login_slice_uses_real_tcp_protocol_pipeline_and_sql_repository();
+  live_login_slice_can_create_accounts_when_policy_allows_it();
 
   if (failures != 0) {
     std::cerr << failures << " login server assertion(s) failed\n";

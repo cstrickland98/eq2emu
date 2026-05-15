@@ -1,3 +1,7 @@
+option(EQ2_SOURCE2_BUILD_APPS "Build source2 application executables" ON)
+option(EQ2_SOURCE2_BUILD_TOOLS "Build source2 tool executables" ON)
+option(EQ2_SOURCE2_ENABLE_LIVE_SMOKE_TESTS "Register source2 loopback smoke tests with CTest" OFF)
+
 add_subdirectory(core)
 add_subdirectory(protocol)
 add_subdirectory(net)
@@ -6,4 +10,11 @@ add_subdirectory(scripting)
 add_subdirectory(zone)
 add_subdirectory(login)
 add_subdirectory(world)
-add_subdirectory(apps)
+
+if(EQ2_SOURCE2_BUILD_APPS)
+  add_subdirectory(apps)
+endif()
+
+if(EQ2_SOURCE2_BUILD_TOOLS)
+  add_subdirectory(tools)
+endif()

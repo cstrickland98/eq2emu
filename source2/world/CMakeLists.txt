@@ -23,6 +23,7 @@ if(BUILD_TESTING)
 
   target_link_libraries(eq2_world_session_tests PRIVATE
     eq2::world
+    eq2::login
   )
 
   eq2_target_defaults(eq2_world_session_tests)

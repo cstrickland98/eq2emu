@@ -1,0 +1,30 @@
+name: source2
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  windows-debug:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build/source2
+          -DEQ2EMU_BUILD_SOURCE2=ON
+          -DEQ2_SOURCE2_BUILD_APPS=ON
+          -DEQ2_SOURCE2_BUILD_TOOLS=ON
+          -DEQ2_SOURCE2_ENABLE_LIVE_SMOKE_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build/source2 --config Debug
+
+      - name: Test
+        run: ctest --test-dir build/source2 -C Debug --output-on-failure

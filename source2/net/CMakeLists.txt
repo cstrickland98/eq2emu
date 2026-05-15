@@ -10,6 +10,10 @@ target_link_libraries(eq2_net INTERFACE
   eq2::external::threads
 )
 
+if(WIN32)
+  target_link_libraries(eq2_net INTERFACE ws2_32)
+endif()
+
 eq2_target_defaults(eq2_net)
 
 if(BUILD_TESTING)

@@ -1,8 +1,12 @@
 #include <eq2/scripting/engine.h>
+#include <eq2/scripting/lua_backend.h>
+#include <eq2/scripting/script_loader.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -187,6 +191,146 @@ void explicit_event_helpers_cover_script_categories() {
              eq2::scripting::ScriptCategory::region, "region event helper sets category");
 }
 
+void script_loader_resolves_paths_and_reads_sources() {
+  namespace fs = std::filesystem;
+
+  const auto root = fs::temp_directory_path() / "eq2emu_source2_script_loader_test";
+  fs::remove_all(root);
+  fs::create_directories(root / "zone");
+
+  const auto id = eq2::scripting::ScriptId{
+      .category = eq2::scripting::ScriptCategory::zone,
+      .name = "qeynos",
+  };
+  const auto path = eq2::scripting::script_path_for(root, id);
+  {
+    std::ofstream(path) << "function enter() end";
+  }
+
+  require_eq(path.parent_path().filename().string(), std::string_view("zone"),
+             "script loader maps category to directory");
+  const auto source = eq2::scripting::read_script_source(path);
+  require(source.has_value(), "script loader reads Lua source from path");
+  require_eq(source.value(), std::string_view("function enter() end"),
+             "script loader preserves source bytes");
+
+  fs::remove_all(root);
+}
+
+void lua_backend_reports_clean_unavailable_when_runtime_is_missing() {
+  eq2::scripting::LuaBackend backend;
+  if (backend.available()) {
+    return;
+  }
+
+  CapturingCommandSink sink;
+  const auto script = eq2::scripting::LoadedScript{
+      .id =
+          eq2::scripting::ScriptId{
+              .category = eq2::scripting::ScriptCategory::zone,
+              .name = "missing_runtime",
+          },
+      .source = "function enter() end",
+      .generation = 1,
+  };
+  eq2::scripting::ScriptContext context(eq2::scripting::zone_event("enter", 10), sink);
+  const auto result = backend.call(script, context);
+
+  require(!result.has_value(), "Lua backend reports failure when runtime is unavailable");
+  require_eq(result.error().code, eq2::core::ErrorCode::unavailable,
+             "Lua backend uses unavailable error when runtime is missing");
+}
+
+void real_lua_backend_loads_calls_reloads_and_posts_owner_mutations() {
+  eq2::scripting::LuaBackend backend;
+  if (!backend.available()) {
+    return;
+  }
+
+  CapturingLogSink log;
+  CapturingCommandSink sink;
+  eq2::scripting::ScriptEngine engine(backend, log);
+  const auto id = eq2::scripting::ScriptId{
+      .category = eq2::scripting::ScriptCategory::zone,
+      .name = "qeynos",
+  };
+
+  engine.load_script(id, "function enter() PostZoneMutation(EventName(), TargetId()) end");
+  auto result = engine.call_event(id, eq2::scripting::zone_event("enter", 10, 42), sink);
+  require(result.has_value(), "real Lua backend calls loaded Lua function");
+  require_eq(sink.mutations.back().command, std::string_view("enter"),
+             "real Lua backend exposes EventName API");
+  require_eq(sink.mutations.back().ids.back(), 10, "real Lua backend exposes TargetId API");
+
+  engine.reload_script(id, "function enter() PostZoneMutation('actor', ActorId()) end");
+  result = engine.call_event(id, eq2::scripting::zone_event("enter", 10, 42), sink);
+  require(result.has_value(), "real Lua backend calls reloaded Lua function");
+  require_eq(sink.mutations.back().command, std::string_view("actor"),
+             "real Lua backend uses reloaded script source");
+  require_eq(sink.mutations.back().ids.back(), 42, "real Lua backend exposes ActorId API");
+}
+
+void real_lua_backend_isolates_lua_errors_and_missing_functions() {
+  eq2::scripting::LuaBackend backend;
+  if (!backend.available()) {
+    return;
+  }
+
+  CapturingLogSink log;
+  CapturingCommandSink sink;
+  eq2::scripting::ScriptEngine engine(backend, log);
+  const auto id = eq2::scripting::ScriptId{
+      .category = eq2::scripting::ScriptCategory::spawn,
+      .name = "guard",
+  };
+
+  engine.load_script(id, "function fail() error('boom') end");
+  auto result = engine.call_event(id, eq2::scripting::spawn_event("fail", 2002, 42), sink);
+  require(!result.has_value(), "real Lua backend isolates Lua runtime errors");
+  require_eq(result.error().code, eq2::core::ErrorCode::parse_error,
+             "real Lua backend maps Lua errors to parse failures");
+  require(!log.records.empty(), "real Lua backend errors are logged by script engine");
+
+  result = engine.call_event(id, eq2::scripting::spawn_event("missing", 2002, 42), sink);
+  require(!result.has_value(), "real Lua backend reports missing function");
+  require_eq(result.error().code, eq2::core::ErrorCode::not_found,
+             "real Lua backend maps missing function to not_found");
+}
+
+void real_lua_backend_smokes_supported_script_categories() {
+  eq2::scripting::LuaBackend backend;
+  if (!backend.available()) {
+    return;
+  }
+
+  CapturingLogSink log;
+  CapturingCommandSink sink;
+  eq2::scripting::ScriptEngine engine(backend, log);
+
+  const std::vector<eq2::scripting::ScriptEvent> events = {
+      eq2::scripting::item_event("handle", 1, 100),
+      eq2::scripting::quest_event("handle", 1, 101),
+      eq2::scripting::spell_event("handle", 1, 102),
+      eq2::scripting::spawn_event("handle", 103, 1),
+      eq2::scripting::zone_event("handle", 104, 1),
+      eq2::scripting::player_event("handle", 105),
+      eq2::scripting::region_event("handle", 106, 1),
+  };
+
+  for (const auto& event : events) {
+    const auto id = eq2::scripting::ScriptId{
+        .category = event.category,
+        .name = "smoke",
+    };
+    engine.load_script(id, "function handle() PostZoneMutation('smoke', TargetId()) end");
+    const auto result = engine.call_event(id, event, sink);
+    require(result.has_value(), "real Lua backend handles supported event category");
+  }
+
+  require_eq(sink.mutations.size(), static_cast<std::size_t>(events.size()),
+             "real Lua backend smoke posts one owner mutation per category");
+}
+
 }  // namespace
 
 int main() {
@@ -195,6 +339,11 @@ int main() {
   script_failures_are_isolated_and_logged();
   script_exceptions_are_captured_as_failures();
   explicit_event_helpers_cover_script_categories();
+  script_loader_resolves_paths_and_reads_sources();
+  lua_backend_reports_clean_unavailable_when_runtime_is_missing();
+  real_lua_backend_loads_calls_reloads_and_posts_owner_mutations();
+  real_lua_backend_isolates_lua_errors_and_missing_functions();
+  real_lua_backend_smokes_supported_script_categories();
 
   if (failures != 0) {
     std::cerr << failures << " scripting assertion(s) failed\n";

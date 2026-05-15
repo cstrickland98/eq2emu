@@ -25,4 +25,19 @@ if(BUILD_TESTING)
   add_test(NAME eq2_protocol_tests
     COMMAND eq2_protocol_tests
   )
+
+  add_executable(eq2_stream_loopback_tests
+    tests/stream_loopback_tests.cpp
+  )
+
+  target_link_libraries(eq2_stream_loopback_tests PRIVATE
+    eq2::protocol
+    eq2::net
+  )
+
+  eq2_target_defaults(eq2_stream_loopback_tests)
+
+  add_test(NAME eq2_stream_loopback_tests
+    COMMAND eq2_stream_loopback_tests
+  )
 endif()
