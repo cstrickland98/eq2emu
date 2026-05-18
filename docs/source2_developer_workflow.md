@@ -104,16 +104,22 @@ source2\config\login_server.eq2emu-target.ini.example
 ```
 
 For real LoginStream clients, keep `[login] opcode_source = database` and
-`opcode_width = 1`, and set `[login] client_version` to the client build you
+`opcode_width = packed`, and set `[login] client_version` to the client build you
 intend to support. On startup, source2 reads `OP_LoginRequestMsg`,
 `OP_LoginReplyMsg`, `OP_WorldListMsg`, `OP_AllWSDescRequestMsg`, and
 `OP_AllCharactersDescRequestMsg`, and `OP_AllCharactersDescReplyMsg` from the
 login database `opcodes` table for the configured client version. Manual/debug
-overrides are still available by setting `opcode_source = config`:
+overrides are still available by setting `opcode_source = config`. Use `packed`
+for the 2006 client-derived `VeType` message-id prefix, or `1` only when all
+configured IDs are below `0xff`:
 
 ```powershell
---login-opcode-source config --login-opcode-width 1 --login-request-opcode 0x01 --login-reply-opcode 0x02 --login-world-list-opcode 0x03 --login-all-worlds-request-opcode 0x04 --login-characters-request-opcode 0x05 --login-characters-reply-opcode 0x06
+--login-opcode-source config --login-opcode-width packed --login-request-opcode 0x01 --login-reply-opcode 0x02 --login-world-list-opcode 0x03 --login-all-worlds-request-opcode 0x04 --login-characters-request-opcode 0x05 --login-characters-reply-opcode 0x06
 ```
+
+World client sessions use the same 2006 client-derived `VeType` packed
+message-id prefix by default. Keep `[world] opcode_width = packed` in real-client
+world configs unless intentionally testing an older source2 harness mode.
 
 Validate owner config without opening sockets:
 
@@ -371,7 +377,8 @@ To advertise a source2 world in the login server's world list, configure
 `[world] account` and `password` to match a `login_worldservers` row in the
 login database, set `[world] advertised_address` to a client-reachable address
 instead of the bind wildcard `0.0.0.0`, configure `[login] remote_address` /
-`remote_port` to the running login server, then start:
+`remote_port` to the running login server, keep `[world] opcode_width = packed`
+for the 2006 client's packed `VeType` app-message prefix, then start:
 
 ```powershell
 build\source2-vcpkg-user-verify\source2\apps\Debug\eq2_world_server.exe --serve --config source2\config\world_server.ini.example

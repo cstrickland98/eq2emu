@@ -1409,19 +1409,28 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 		PacketStruct* packet = configReader.getStruct("WS_QuestJournalVisible", GetVersion());
 		if (packet) {
 			if (packet->LoadPacketData(app->pBuffer, app->size)) {
-				int32 quest_id = packet->getType_int32_ByName("quest_id");
 				bool hidden = packet->getType_int8_ByName("visible") == 1 ? false : true;
-				GetPlayer()->MPlayerQuests.readlock(__FUNCTION__, __LINE__);
-				map<int32, Quest*>* player_quests = player->GetPlayerQuests();
-				if (player_quests) {
-					if (player_quests->count(quest_id) > 0)
-						player_quests->at(quest_id)->SetHidden(hidden);
-					else
-						LogWrite(CCLIENT__ERROR, 0, "Client", "OP_QuestJournalSetVisibleMsg error: Player does not have quest with id of %u", quest_id);
+				bool counted_quest_list = GetVersion() >= 546 && GetVersion() <= 561;
+				int32 num_quests = counted_quest_list ? packet->getType_int32_ByName("num_quests") : 1;
+				if (num_quests > 1024) {
+					LogWrite(CCLIENT__ERROR, 0, "Client", "OP_QuestJournalSetVisibleMsg error: num_quests = %u - quantity too high, aborting load.", num_quests);
 				}
-				else
-					LogWrite(CCLIENT__ERROR, 0, "Client", "OP_QuestJournalSetVisibleMsg error: Unable to get player(%s) quests", player->GetName());
-				GetPlayer()->MPlayerQuests.releasereadlock(__FUNCTION__, __LINE__);
+				else {
+					GetPlayer()->MPlayerQuests.readlock(__FUNCTION__, __LINE__);
+					map<int32, Quest*>* player_quests = player->GetPlayerQuests();
+					if (player_quests) {
+						for (int32 i = 0; i < num_quests; i++) {
+							int32 quest_id = counted_quest_list ? packet->getType_int32_ByName("quest_id", i) : packet->getType_int32_ByName("quest_id");
+							if (player_quests->count(quest_id) > 0)
+								player_quests->at(quest_id)->SetHidden(hidden);
+							else
+								LogWrite(CCLIENT__ERROR, 0, "Client", "OP_QuestJournalSetVisibleMsg error: Player does not have quest with id of %u", quest_id);
+						}
+					}
+					else
+						LogWrite(CCLIENT__ERROR, 0, "Client", "OP_QuestJournalSetVisibleMsg error: Unable to get player(%s) quests", player->GetName());
+					GetPlayer()->MPlayerQuests.releasereadlock(__FUNCTION__, __LINE__);
+				}
 			}
 			safe_delete(packet);
 		}
@@ -1610,8 +1619,16 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 		break;
 	}
 	case OP_DoneLoadingUIResourcesMsg: {
+		bool began_pre_char_info = false;
+		if (GetVersion() <= 561 && !IsReadyForSpawns()) {
+			BeginPreCharInfo();
+			began_pre_char_info = true;
+		}
+
 		if (GetVersion() <= 561) {
-			ClientPacketFunctions::SendUpdateSpellBook(this);
+			if (!began_pre_char_info) {
+				ClientPacketFunctions::SendUpdateSpellBook(this);
+			}
 		}
 		// need to quickly flash the DoF client the rest of their inventory
 		if (GetVersion() <= 561) {
@@ -1849,10 +1866,12 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 				Recipe* recipe = master_recipe_list.GetRecipe(GetPlayer()->GetCurrentRecipe());
 				if (recipe) {
 					int32 item = 0;
-					int8 qty = 0;
+					int16 qty = 0;
 					vector<pair<int32, int16>> items;
 					char tmp_item_id[30];
-					if (GetVersion() > 1193) {
+					bool dof_nested_components = GetVersion() >= 546 && GetVersion() <= 561;
+					bool modern_nested_components = GetVersion() > 1193;
+					if (modern_nested_components) {
 						int8 num_primary_selected_items = packet->getType_int8_ByName("num_primary_selected_items");
 						for (int8 i = 0; i < num_primary_selected_items; i++) {
 							memset(tmp_item_id, 0, 30);
@@ -1873,7 +1892,7 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 					}
 					int8 build_components = packet->getType_int8_ByName("num_build_components");
 
-					if (GetVersion() > 1193) {
+					if (dof_nested_components || modern_nested_components) {
 						for (int8 i = 0; i < build_components; i++) {
 							memset(tmp_item_id, 0, 30);
 							sprintf(tmp_item_id, "num_selected_items_%i", i);
@@ -1883,7 +1902,7 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 								sprintf(tmp_item_id, "selected_id%i_%i", i, j);
 								item = packet->getType_int32_ByName(tmp_item_id);
 								sprintf(tmp_item_id, "selected_qty%i_%i", i, j);
-								qty = packet->getType_int16_ByName(tmp_item_id);
+								qty = dof_nested_components ? packet->getType_int8_ByName(tmp_item_id) : packet->getType_int16_ByName(tmp_item_id);
 								if (item > 0)
 									items.push_back(make_pair(item, qty));
 
@@ -1897,19 +1916,19 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 							sprintf(tmp_item_id, "component_id_%i", i);
 							int32 item = packet->getType_int32_ByName(tmp_item_id);
 							sprintf(tmp_item_id, "component_qty_%i", i);
-							qty = packet->getType_int32_ByName(tmp_item_id);
+							qty = packet->getType_int8_ByName(tmp_item_id);
 							if (item > 0)
 								items.push_back(make_pair(item, qty));
 						}
 					}
-					if (GetVersion() > 1193) {
+					if (dof_nested_components || modern_nested_components) {
 						int8 num_fuel_items = packet->getType_int8_ByName("num_fuel_items");
 						for (int8 i = 0; i < num_fuel_items; i++) {
 							memset(tmp_item_id, 0, 30);
 							sprintf(tmp_item_id, "fuel_id_%i", i);
 							item = packet->getType_int32_ByName(tmp_item_id);
 							sprintf(tmp_item_id, "fuel_qty_%i", i);
-							qty = packet->getType_int16_ByName(tmp_item_id);
+							qty = dof_nested_components ? packet->getType_int8_ByName(tmp_item_id) : packet->getType_int16_ByName(tmp_item_id);
 							if (item > 0)
 								items.push_back(make_pair(item, qty));
 							item = 0;
@@ -4602,6 +4621,9 @@ void Client::SimpleMessage(int8 color, const char* message) {
 }
 
 void Client::SendSpellUpdate(Spell* spell, bool add_silently, bool add_to_hotbar) {
+	if (GetVersion() <= 561)
+		return;
+
 	// disable potentially putting a spell on the hotbar (like archetypes) that are not to be shown to player or book
 	if(spell && spell->GetSpellData() && spell->GetSpellData()->type == SPELL_BOOK_TYPE_NOT_SHOWN)
 		add_to_hotbar = false;
@@ -10975,6 +10997,37 @@ void Client::InspectPlayer(Player* player_to_inspect) {
 	}
 
 	if (player_to_inspect && player_to_inspect->GetClient()) {
+		if (GetVersion() == 546) {
+			PacketStruct* packet = configReader.getStruct("WS_InspectPlayerDoF", GetVersion());
+			if (packet) {
+				packet->setMediumStringByName("name", player_to_inspect->GetName());
+				packet->setMediumStringByName("surname", player_to_inspect->GetLastName());
+
+				string title = player_to_inspect->GetPrefixTitle();
+				if (strlen(player_to_inspect->GetSuffixTitle()) > 0) {
+					if (title.length() > 0)
+						title.append(" ");
+					title.append(player_to_inspect->GetSuffixTitle());
+				}
+				packet->setMediumStringByName("title", title.c_str());
+
+				int16 effective_level = player_to_inspect->GetInfoStruct()->get_effective_level() != 0 ? player_to_inspect->GetInfoStruct()->get_effective_level() : player_to_inspect->GetLevel();
+				packet->setDataByName("adventure_level", effective_level);
+				packet->setDataByName("adventure_class", player_to_inspect->GetAdventureClass());
+
+				for (int32 s = 0; s < 22; s++) {
+					char item_slot_name[64];
+					_snprintf(item_slot_name, sizeof(item_slot_name), "equipment_name_%u", s);
+					Item* item = player_to_inspect->GetEquipmentList()->GetItem(GetPlayer()->ConvertSlotFromClient(s, GetVersion()));
+					packet->setMediumStringByName(item_slot_name, item ? item->name.c_str() : "");
+				}
+
+				QueuePacket(packet->serialize());
+				safe_delete(packet);
+			}
+			return;
+		}
+
 		PacketStruct* packet = configReader.getStruct("WS_InspectPlayer", GetVersion());
 		if (packet) {
 			packet->setDataByName("unknown", 0);
@@ -11878,6 +11931,9 @@ void Client::SendLanguagesUpdate(int32 id, bool setlang) {
 }
 
 void Client::SendPetOptionsWindow(const char* pet_name, int8 type) {
+	if (GetVersion() <= 561)
+		return;
+
 	PacketStruct* packet = configReader.getStruct("WS_PetOptions", GetVersion());
 	if (packet) {
 		if (pet_name)
@@ -12860,7 +12916,10 @@ void Client::SendFlightAutoMount(int32 path_id, int16 mount_id, int8 mount_red_c
 			LogWrite(CCLIENT__ERROR, 0, "Client", "WS_CreateBoatTransportMsg missing for version %u", GetVersion());
 			return;
 		}
-		packet->setDataByName("path_id", 1); // workaround we send the SendFlightPathsPackets based on the index since the structure seems to only honor the first index as every index+1
+		if (GetVersion() == 546)
+			packet->setDataByName("transport_count", 0);
+		else
+			packet->setDataByName("path_id", 1); // workaround we send the SendFlightPathsPackets based on the index since the structure seems to only honor the first index as every index+1
 	//	packet->PrintPacket();
 		QueuePacket(packet->serialize());
 		safe_delete(packet);
@@ -12891,7 +12950,10 @@ void Client::SendShowBook(Spawn* sender, string title, int8 language, int8 num_p
 	if (GetVersion() > 561)
 		packet->setDataByName("unknown5", 1, 4);
 
-	packet->setArrayLengthByName("num_pages", num_pages);
+	int32 page_count = num_pages;
+	if (GetVersion() >= 546 && GetVersion() <= 561 && page_count > 0)
+		page_count--;
+	packet->setArrayLengthByName("num_pages", page_count);
 
 	va_list args;
 	va_start(args, num_pages);
@@ -12962,7 +13024,10 @@ void Client::SendShowBook(Spawn* sender, string title, int8 language, vector<Ite
 	if (GetVersion() > 561)
 		packet->setDataByName("unknown5", 1, 4);
 
-	packet->setArrayLengthByName("num_pages", pages.size());
+	int32 page_count = pages.size();
+	if (GetVersion() >= 546 && GetVersion() <= 561 && page_count > 0)
+		page_count--;
+	packet->setArrayLengthByName("num_pages", page_count);
 
 	std::string endString("");
 	for (int8 p = 0; p < pages.size(); p++)

@@ -35,6 +35,176 @@
 using namespace std;
 extern map<int16,OpcodeManager*>EQOpcodeManager;
 
+struct Client546RootOpcodeMap {
+	EmuOpcode opcode_name;
+	int16 opcode;
+};
+
+static const Client546RootOpcodeMap client546RootOpcodeMap[] = {
+	{ OP_ZoneInfoMsg, 29 },
+	{ OP_DoneSendingInitialEntitiesMsg, 31 },
+	{ OP_DoneLoadingZoneResourcesMsg, 32 },
+	{ OP_DoneLoadingUIResourcesMsg, 33 },
+	{ OP_PredictionUpdateMsg, 34 },
+	{ OP_SetRemoteCmdsMsg, 35 },
+	{ OP_RemoteCmdMsg, 36 },
+	{ OP_GameWorldTimeMsg, 37 },
+	{ OP_RequestCampMsg, 42 },
+	{ OP_CampStartedMsg, 43 },
+	{ OP_CampAbortedMsg, 44 },
+	{ OP_WhoQueryReplyMsg, 46 },
+	{ OP_ClientCmdMsg, 50 },
+	{ OP_UpdateTargetMsg, 53 },
+	{ OP_UpdateCharacterSheetMsg, 55 },
+	{ OP_UpdateSpellBookMsg, 56 },
+	{ OP_UpdateInventoryMsg, 58 },
+	{ OP_AfterInvSpellUpdate, 59 },
+	{ OP_UpdateRecipeBookMsg, 60 },
+	{ OP_RequestRecipeDetailsMsg, 61 },
+	{ OP_RecipeDetailsMsg, 62 },
+	{ OP_UpdateSkillBookMsg, 63 },
+	{ OP_UpdateOpportunityMsg, 65 },
+	{ OP_ChangeZoneMsg, 67 },
+	{ OP_TeleportWithinZoneMsg, 69 },
+	{ OP_TeleportWithinZoneNoReloadMsg, 70 },
+	{ OP_ReadyToZoneMsg, 73 },
+	{ OP_SendLatestRequestMsg, 86 },
+	{ OP_SetSocialMsg, 88 },
+	{ OP_ClearDataMsg, 89 },
+	{ OP_DialogSelectMsg, 95 },
+	{ OP_DialogCloseMsg, 96 },
+	{ OP_QuestJournalOpenMsg, 99 },
+	{ OP_QuestJournalInspectMsg, 100 },
+	{ OP_QuestJournalSetVisibleMsg, 104 },
+	{ OP_QuestJournalWaypointMsg, 105 },
+	{ OP_GuildUpdateMsg, 110 },
+	{ OP_UpdateHouseAccessDataMsg, 120 },
+	{ OP_PlayerHouseBaseScreenMsg, 121 },
+	{ OP_PlayerHousePurchaseScreenMsg, 122 },
+	{ OP_PlayerHouseAccessUpdateMsg, 123 },
+	{ OP_BuyPlayerHouseMsg, 128 },
+	{ OP_EnterHouseMsg, 132 },
+	{ OP_ExitHouseMsg, 133 },
+	{ OP_HouseDefaultAccessSetMsg, 134 },
+	{ OP_HouseAccessSetMsg, 135 },
+	{ OP_HouseAccessRemoveMsg, 136 },
+	{ OP_PayHouseUpkeepMsg, 137 },
+	{ OP_HouseItemsList, 410 },
+	{ OP_MoveableObjectPlacementCriteri, 138 },
+	{ OP_EnterMoveObjectModeMsg, 139 },
+	{ OP_PositionMoveableObject, 140 },
+	{ OP_CancelMoveObjectModeMsg, 141 },
+	{ OP_TintWidgetsMsg, 148 },
+	{ OP_KeymapLoadMsg, 153 },
+	{ OP_KeymapNoneMsg, 154 },
+	{ OP_KeymapDataMsg, 155 },
+	{ OP_EntityVerbsRequestMsg, 159 },
+	{ OP_EntityVerbsReplyMsg, 160 },
+	{ OP_EntityVerbsVerbMsg, 161 },
+	{ OP_ChatRelationshipUpdateMsg, 162 },
+	{ OP_LootItemsRequestMsg, 163 },
+	{ OP_StoppedLootingMsg, 164 },
+	{ OP_SitMsg, 165 },
+	{ OP_StandMsg, 166 },
+	{ OP_SatMsg, 167 },
+	{ OP_StoodMsg, 168 },
+	{ OP_ClearForTakeOffMsg, 169 },
+	{ OP_ReadyForTakeOffMsg, 170 },
+	{ OP_DefaultGroupOptionsRequestMsg, 175 },
+	{ OP_DefaultGroupOptionsMsg, 176 },
+	{ OP_DisplayGroupOptionsScreenMsg, 178 },
+	{ OP_DisplayInnVisitScreenMsg, 179 },
+	{ OP_PerformPlayerKnockbackMsg, 187 },
+	{ OP_PerformCameraShakeMsg, 188 },
+	{ OP_PopulateSkillMapsMsg, 189 },
+	{ OP_SignalMsg, 191 },
+	{ OP_ShowCreateFromRecipeUIMsg, 192 },
+	{ OP_CancelCreateFromRecipeMsg, 193 },
+	{ OP_BeginItemCreationMsg, 194 },
+	{ OP_StopItemCreationMsg, 195 },
+	{ OP_ShowItemCreationProcessUIMsg, 196 },
+	{ OP_UpdateItemCreationProcessUIMsg, 197 },
+	{ OP_DisplayTSEventReactionMsg, 198 },
+	{ OP_LsClientAlertlogReplyMsg, 216 },
+	{ OP_LsClientVerifylogReplyMsg, 217 },
+	{ OP_UpdateClientPredFlagsMsg, 219 },
+	{ OP_CreateBoatTransportsMsg, 224 },
+	{ OP_ExamineInfoRequestMsg, 229 },
+	{ OP_QuickbarInitMsg, 230 },
+	{ OP_QuickbarUpdateMsg, 231 },
+	{ OP_MacroInitMsg, 232 },
+	{ OP_MacroUpdateMsg, 233 },
+	{ OP_LevelChangedMsg, 235 },
+	{ OP_EncounterBrokenMsg, 237 },
+	{ OP_OnscreenMsgMsg, 238 },
+	{ OP_GuildEventAddMsg, 242 },
+	{ OP_GuildEventActionMsg, 243 },
+	{ OP_GuildEventListMsg, 244 },
+	{ OP_GuildBankUpdateMsg, 252 },
+	{ OP_GuildBankEventListMsg, 253 },
+	{ OP_RewardPackMsg, 255 },
+	{ OP_ChatFiltersMsg, 269 },
+	{ OP_MailSendMessageMsg, 272 },
+	{ OP_MailGetHeadersReplyMsg, 274 },
+	{ OP_MailGetMessageReplyMsg, 275 },
+	{ OP_MailSendMessageReplyMsg, 276 },
+	{ OP_WaypointReplyMsg, 281 },
+	{ OP_WaypointSelectMsg, 282 },
+	{ OP_WaypointUpdateMsg, 283 },
+	{ OP_ShowZoneTeleporterDestinations, 285 },
+	{ OP_SelectZoneTeleporterDestinatio, 286 },
+	{ OP_ReloadLocalizedTxtMsg, 287 },
+	{ OP_GuildMembershipResponseMsg, 289 },
+	{ OP_LeaveGuildNotifyMsg, 290 },
+	{ OP_JoinGuildNotifyMsg, 291 },
+	{ OP_AvatarUpdateMsg, 292 },
+	{ OP_BioUpdateMsg, 293 },
+	{ OP_CsCategoryRequestMsg, 298 },
+	{ OP_KnowledgeWindowSlotMappingMsg, 300 },
+	{ OP_PromoFlagsDetailsMsg, 306 },
+	{ OP_UpdateRaidMsg, 314 },
+	{ OP_TitleUpdateMsg, 317 },
+	{ OP_ClientFellMsg, 318 },
+	{ OP_TrackingUpdateMsg, 323 },
+	{ OP_BeginTrackingMsg, 324 },
+	{ OP_StopTrackingMsg, 325 },
+	{ OP_AdvancementRequestMsg, 327 },
+	{ OP_MapFogDataInitMsg, 328 },
+	{ OP_MapFogDataUpdateMsg, 329 },
+	{ OP_OfferQuestMsg, 334 },
+	{ OP_FlightPathsMsg, 345 },
+};
+
+static bool GetClient546RootVeTypeOpcode(EmuOpcode opcode_name, int16* opcode) {
+	if (!opcode)
+		return false;
+
+	const int map_size = sizeof(client546RootOpcodeMap) / sizeof(client546RootOpcodeMap[0]);
+	for (int i = 0; i < map_size; ++i) {
+		if (client546RootOpcodeMap[i].opcode_name == opcode_name) {
+			*opcode = client546RootOpcodeMap[i].opcode;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool GetClient546RootVeTypeEmuOpcode(uint16 opcode, EmuOpcode* opcode_name) {
+	if (!opcode_name)
+		return false;
+
+	const int map_size = sizeof(client546RootOpcodeMap) / sizeof(client546RootOpcodeMap[0]);
+	for (int i = 0; i < map_size; ++i) {
+		if (client546RootOpcodeMap[i].opcode == opcode) {
+			*opcode_name = client546RootOpcodeMap[i].opcode_name;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 uint8 EQApplicationPacket::default_opcode_size=2;
 
 EQPacket::EQPacket(const uint16 op, const unsigned char *buf, uint32 len)
@@ -75,7 +245,10 @@ int8 EQ2Packet::PreparePacket(int16 MaxLen) {
 
 	packet_prepared = true;
 
-	int16 login_opcode = EQOpcodeManager[OpcodeVersion]->EmuToEQ(login_op);
+	int16 login_opcode = 0;
+	bool opcode_overridden = version == 546 && GetClient546RootVeTypeOpcode(login_op, &login_opcode);
+	if (!opcode_overridden)
+		login_opcode = EQOpcodeManager[OpcodeVersion]->EmuToEQ(login_op);
 	if (login_opcode == 0xcdcd)
 	{
 		LogWrite(PACKET__ERROR, 0, "Packet", "Version %i is not listed in the opcodes table for opcode %s", version, EQOpcodeManager[OpcodeVersion]->EmuToName(login_op));
@@ -183,6 +356,10 @@ void EQPacket::DumpRawHeader(uint16 seq, FILE* to) const
 
 const char* EQPacket::GetOpcodeName(){
 	int16 OpcodeVersion = GetOpcodeVersion(version);
+	EmuOpcode client_opcode = OP_Unknown;
+	if (version == 546 && GetClient546RootVeTypeEmuOpcode(opcode, &client_opcode))
+		return OpcodeNames[client_opcode];
+
 	if(EQOpcodeManager.count(OpcodeVersion) > 0)
 		return EQOpcodeManager[OpcodeVersion]->EQToName(opcode);
 	else
@@ -201,7 +378,10 @@ void EQPacket::DumpRawHeaderNoTime(uint16 seq, FILE *to) const
 	
 	string name;
 	int16 OpcodeVersion = GetOpcodeVersion(version);
-	if(EQOpcodeManager.count(OpcodeVersion) > 0)
+	EmuOpcode client_opcode = OP_Unknown;
+	if (version == 546 && GetClient546RootVeTypeEmuOpcode(opcode, &client_opcode))
+		name = OpcodeNames[client_opcode];
+	else if(EQOpcodeManager.count(OpcodeVersion) > 0)
 		name = EQOpcodeManager[OpcodeVersion]->EQToName(opcode);
 	
 	fprintf(to, "[OpCode 0x%04x (%s) Size=%u]\n",opcode,name.c_str(),size);
@@ -430,7 +610,11 @@ void EQApplicationPacket::SetOpcode(EmuOpcode emu_op) {
 		return;
 	}
 
-	opcode = EQOpcodeManager[GetOpcodeVersion(version)]->EmuToEQ(emu_op);
+	int16 client_opcode = 0;
+	if (version == 546 && GetClient546RootVeTypeOpcode(emu_op, &client_opcode))
+		opcode = client_opcode;
+	else
+		opcode = EQOpcodeManager[GetOpcodeVersion(version)]->EmuToEQ(emu_op);
 	
 	if(opcode == OP_Unknown) {
 		LogWrite(PACKET__DEBUG, 0, "Packet", "Unable to convert Emu opcode %s (%d) into an EQ opcode.", OpcodeNames[emu_op], emu_op);
@@ -448,7 +632,10 @@ const EmuOpcode EQApplicationPacket::GetOpcodeConst() const {
 		return(OP_Unknown);
 	}
 
-	EmuOpcode emu_op;
+	EmuOpcode emu_op = OP_Unknown;
+	if (version == 546 && GetClient546RootVeTypeEmuOpcode(opcode, &emu_op))
+		return(emu_op);
+
 	emu_op = EQOpcodeManager[GetOpcodeVersion(version)]->EQToEmu(opcode);
 	if(emu_op == OP_Unknown) {
 		LogWrite(PACKET__DEBUG, 1, "Packet", "Unable to convert EQ opcode 0x%.4X (%i) to an emu opcode (%s)", opcode, opcode, __FUNCTION__);

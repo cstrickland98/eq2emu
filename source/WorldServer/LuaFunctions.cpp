@@ -11623,7 +11623,7 @@ int EQ2Emu_lua_InstructionWindowGoal(lua_State* state) {
 		return 0;
 	}
 	if (client) {
-		PacketStruct* packet = configReader.getStruct("WS_InstructionWindow", client->GetVersion());
+		PacketStruct* packet = configReader.getStruct("WS_InstructionWindowGoal", client->GetVersion());
 		if (packet) {
 			packet->setDataByName("goal_num", goal_num);
 			client->QueuePacket(packet->serialize());
@@ -11646,7 +11646,11 @@ int EQ2Emu_lua_InstructionWindowClose(lua_State* state) {
 		return 0;
 	}
 	if (client && client->GetVersion() >= 374) {
-		client->QueuePacket(new EQ2Packet(OP_EqInstructionWindowCloseCmd, 0, 0));
+		PacketStruct* packet = configReader.getStruct("WS_InstructionWindowClose", client->GetVersion());
+		if (packet) {
+			client->QueuePacket(packet->serialize());
+			safe_delete(packet);
+		}
 	}
 	return 0;
 }

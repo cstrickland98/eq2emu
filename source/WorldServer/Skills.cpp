@@ -364,6 +364,9 @@ EQ2Packet* PlayerSkillList::GetSkillPacket(int16 version){
 			else if (version <= 373) {
 				size = 15 * skill_count + 6;
 			}
+			else if (version >= 546 && version <= 561) {
+				size = 21 * skill_count + 6;
+			}
 			else if (version <= 561) {
 				size = 21 * skill_count + 7;
 			}
@@ -427,7 +430,7 @@ EQ2Packet* PlayerSkillList::GetSkillPacket(int16 version){
 			}
 		}
 		int8 offset = 1;
-		if (version <= 373)
+		if (version <= 373 || (version >= 546 && version <= 561))
 			offset = 0;
 		EQ2Packet* ret = packet->serializeCountPacket(version, offset, orig_packet, xor_packet);
 		//packet->PrintPacket();

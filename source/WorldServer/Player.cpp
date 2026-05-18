@@ -983,6 +983,9 @@ EQ2Packet* PlayerInfo::serialize(int16 version) {
 }
 
 EQ2Packet* PlayerInfo::serializePet(int16 version) {
+	if (version < 1188)
+		return 0;
+
 	PacketStruct* packet = configReader.getStruct("WS_CharacterPet", version);
 	if(packet) {
 		Spawn* pet = 0;
@@ -7746,4 +7749,3 @@ void Player::SetActiveDrinkUniqueID(int32 unique_id, bool update_db) {
 	database.insertCharacterProperty(client, CHAR_PROPERTY_SETACTIVEDRINK, (char*)std::to_string(unique_id).c_str());
 	}
 }
-	

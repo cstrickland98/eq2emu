@@ -33,6 +33,12 @@ to zero and treated like placeholders." />
 <Data ElementName="name" Type="EQ2_16Bit_String" />
 <Data ElementName="max_characters" Type="int32" Size="1" />
 </Struct>
+<Struct Name="LS_DeleteCharacterResponse" ClientVersion="546" OpcodeName="OP_DeleteCharacterReplyMsg">
+<Data ElementName="response" Type="int8" Size="1" />
+<Data ElementName="server_id" Type="int32" Size="1" />
+<Data ElementName="char_id" Type="int32" Size="1" />
+<Data ElementName="name" Type="EQ2_16Bit_String" />
+</Struct>
 <Struct Name="LS_LoginRequest" ClientVersion="1" OpcodeName="OP_LoginRequestMsg">
 <Data ElementName="sessionID" Type="EQ2_16BitString" />
 <Data ElementName="sessionRecycleToken" Type="EQ2_16BitString" />
@@ -179,6 +185,12 @@ to zero and treated like placeholders." />
 <Data ElementName="char_id" Type="int32" Size="1" />
 <Data ElementName="server_id" Type="int32" Size="1" />
 <Data ElementName="unknown" Type="int8" Size="3" />
+</Struct>
+<Struct Name="LS_PlayRequest" ClientVersion="546" OpcodeName="OP_PlayCharacterRequestMsg">
+<Data ElementName="char_id" Type="int32" Size="1" />
+<Data ElementName="server_id" Type="int32" Size="1" />
+<Data ElementName="unknown" Type="int8" Size="1" />
+<Data ElementName="name" Type="EQ2_16BitString" />
 </Struct>
 <Struct Name="LS_PlayResponse" ClientVersion="1" OpcodeName="OP_PlayCharacterReplyMsg">
 <Data ElementName="response" Type="int8" Size="1" />
@@ -647,6 +659,17 @@ to zero and treated like placeholders." />
 <Data ElementName="unknown_array2" Type="Array" ArraySizeVariable ="unknown_array2_size" >
   <Data ElementName="array2_unknown" Type="int32" Size="1" />
 </Data>
+</Struct>
+<Struct Name="LS_LoginReplyMsg" ClientVersion="546" OpcodeName="OP_LoginReplyMsg">
+<Data ElementName="login_response" Type="int8" Size="1" />
+<Data ElementName="unknown" Type="EQ2_16Bit_String" Size="1" />
+<Data ElementName="parental_control_flag" Type="int8" Size="1" />
+<Data ElementName="parental_control_timer" Type="int32" Size="2" />
+<Data ElementName="unknown2" Type="int32" Size="1" />
+<Data ElementName="account_id" Type="int32" Size="1" />
+<Data ElementName="unknown3" Type="EQ2_16Bit_String" Size="1" />
+<Data ElementName="reset_appearance" Type="int8" Size="1" />
+<Data ElementName="do_not_force_soga" Type="int8" Size="1" />
 </Struct>
 <Struct Name="LS_LoginReplyMsg" ClientVersion="843" OpcodeName="OP_LoginReplyMsg">
 <Data ElementName="login_response" Type="int8" Size="1" />

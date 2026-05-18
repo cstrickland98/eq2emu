@@ -214,7 +214,7 @@ bool ChatChannel::SendChannelUserList(Client *client) {
 	packet_struct->setArrayLengthByName("num_players", clients.size());
 	for (itr = clients.begin(); itr != clients.end(); itr++) {
 		if ((to_client = zone_list.GetClientByCharID(*itr)) != NULL)
-			packet_struct->setArrayDataByName("player_name", client->GetPlayer()->GetName(), i++);
+			packet_struct->setArrayDataByName("player_name", to_client->GetPlayer()->GetName(), i++);
 		else
 			packet_struct->setArrayDataByName("player_name", "<Unknown>", i++);
 	}

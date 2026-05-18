@@ -93,6 +93,13 @@ EQ2Packet* RemoteCommands::serialize(int16 version){
 	for( command_list = commands.begin(); command_list != commands.end(); command_list++ ) {
 		AddDataCommand(&(*command_list));
 	}
+	if (version == 546) {
+		int16 num_aliases = 0;
+		buffer.append((char*)&num_aliases, sizeof(int16));
+		EQ2Packet* app = new EQ2Packet(OP_SetRemoteCmdsMsg, (uchar*)buffer.c_str(), buffer.length());
+		return app;
+	}
+
 	EQ2Packet* app = new EQ2Packet(OP_SetRemoteCmdsMsg, (uchar*)buffer.c_str(), buffer.length() + 1);
 	return app;
 }
@@ -10247,7 +10254,7 @@ void Commands::Command_TellChannel(Client *client, Seperator *sep) {
 void Commands::Command_Test(Client* client, EQ2_16BitString* command_parms) {
 	Seperator* sep = new Seperator(command_parms->data.c_str(), ' ', 50, 500, true);
 	if (sep->IsSet(0)) {
-		if (atoi(sep->arg[0]) == 1) {
+		if (atoi(sep->arg[0]) == 1 && client->GetVersion() > 561) {
 			PacketStruct* packet2 = configReader.getStruct("WS_SpellGainedMsg", client->GetVersion());
 			if (packet2) {
 				packet2->setDataByName("spell_type", 2);

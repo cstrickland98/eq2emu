@@ -1591,6 +1591,395 @@ int32 PacketStruct::GetArraySizeByName(const char* name, int32 index) {
 	return GetArraySize(ds1, index);
 }
 
+#ifndef LOGIN
+struct Client546RootOpcodeMap {
+	EmuOpcode opcode_name;
+	int16 opcode;
+};
+
+static const Client546RootOpcodeMap client546RootOpcodeMap[] = {
+	{ OP_ZoneInfoMsg, 29 },
+	{ OP_DoneSendingInitialEntitiesMsg, 31 },
+	{ OP_DoneLoadingZoneResourcesMsg, 32 },
+	{ OP_DoneLoadingUIResourcesMsg, 33 },
+	{ OP_PredictionUpdateMsg, 34 },
+	{ OP_SetRemoteCmdsMsg, 35 },
+	{ OP_RemoteCmdMsg, 36 },
+	{ OP_GameWorldTimeMsg, 37 },
+	{ OP_RequestCampMsg, 42 },
+	{ OP_CampStartedMsg, 43 },
+	{ OP_CampAbortedMsg, 44 },
+	{ OP_WhoQueryReplyMsg, 46 },
+	{ OP_ClientCmdMsg, 50 },
+	{ OP_UpdateTargetMsg, 53 },
+	{ OP_UpdateCharacterSheetMsg, 55 },
+	{ OP_UpdateSpellBookMsg, 56 },
+	{ OP_UpdateInventoryMsg, 58 },
+	{ OP_AfterInvSpellUpdate, 59 },
+	{ OP_UpdateRecipeBookMsg, 60 },
+	{ OP_RequestRecipeDetailsMsg, 61 },
+	{ OP_RecipeDetailsMsg, 62 },
+	{ OP_UpdateSkillBookMsg, 63 },
+	{ OP_UpdateOpportunityMsg, 65 },
+	{ OP_ChangeZoneMsg, 67 },
+	{ OP_TeleportWithinZoneMsg, 69 },
+	{ OP_TeleportWithinZoneNoReloadMsg, 70 },
+	{ OP_ReadyToZoneMsg, 73 },
+	{ OP_SendLatestRequestMsg, 86 },
+	{ OP_SetSocialMsg, 88 },
+	{ OP_ClearDataMsg, 89 },
+	{ OP_DialogSelectMsg, 95 },
+	{ OP_DialogCloseMsg, 96 },
+	{ OP_QuestJournalOpenMsg, 99 },
+	{ OP_QuestJournalInspectMsg, 100 },
+	{ OP_QuestJournalSetVisibleMsg, 104 },
+	{ OP_QuestJournalWaypointMsg, 105 },
+	{ OP_GuildUpdateMsg, 110 },
+	{ OP_UpdateHouseAccessDataMsg, 120 },
+	{ OP_PlayerHouseBaseScreenMsg, 121 },
+	{ OP_PlayerHousePurchaseScreenMsg, 122 },
+	{ OP_PlayerHouseAccessUpdateMsg, 123 },
+	{ OP_BuyPlayerHouseMsg, 128 },
+	{ OP_EnterHouseMsg, 132 },
+	{ OP_ExitHouseMsg, 133 },
+	{ OP_HouseDefaultAccessSetMsg, 134 },
+	{ OP_HouseAccessSetMsg, 135 },
+	{ OP_HouseAccessRemoveMsg, 136 },
+	{ OP_PayHouseUpkeepMsg, 137 },
+	{ OP_HouseItemsList, 410 },
+	{ OP_MoveableObjectPlacementCriteri, 138 },
+	{ OP_EnterMoveObjectModeMsg, 139 },
+	{ OP_PositionMoveableObject, 140 },
+	{ OP_CancelMoveObjectModeMsg, 141 },
+	{ OP_TintWidgetsMsg, 148 },
+	{ OP_KeymapLoadMsg, 153 },
+	{ OP_KeymapNoneMsg, 154 },
+	{ OP_KeymapDataMsg, 155 },
+	{ OP_EntityVerbsRequestMsg, 159 },
+	{ OP_EntityVerbsReplyMsg, 160 },
+	{ OP_EntityVerbsVerbMsg, 161 },
+	{ OP_ChatRelationshipUpdateMsg, 162 },
+	{ OP_LootItemsRequestMsg, 163 },
+	{ OP_StoppedLootingMsg, 164 },
+	{ OP_SitMsg, 165 },
+	{ OP_StandMsg, 166 },
+	{ OP_SatMsg, 167 },
+	{ OP_StoodMsg, 168 },
+	{ OP_ClearForTakeOffMsg, 169 },
+	{ OP_ReadyForTakeOffMsg, 170 },
+	{ OP_DefaultGroupOptionsRequestMsg, 175 },
+	{ OP_DefaultGroupOptionsMsg, 176 },
+	{ OP_DisplayGroupOptionsScreenMsg, 178 },
+	{ OP_DisplayInnVisitScreenMsg, 179 },
+	{ OP_PerformPlayerKnockbackMsg, 187 },
+	{ OP_PerformCameraShakeMsg, 188 },
+	{ OP_PopulateSkillMapsMsg, 189 },
+	{ OP_SignalMsg, 191 },
+	{ OP_ShowCreateFromRecipeUIMsg, 192 },
+	{ OP_CancelCreateFromRecipeMsg, 193 },
+	{ OP_BeginItemCreationMsg, 194 },
+	{ OP_StopItemCreationMsg, 195 },
+	{ OP_ShowItemCreationProcessUIMsg, 196 },
+	{ OP_UpdateItemCreationProcessUIMsg, 197 },
+	{ OP_DisplayTSEventReactionMsg, 198 },
+	{ OP_LsClientAlertlogReplyMsg, 216 },
+	{ OP_LsClientVerifylogReplyMsg, 217 },
+	{ OP_UpdateClientPredFlagsMsg, 219 },
+	{ OP_CreateBoatTransportsMsg, 224 },
+	{ OP_ExamineInfoRequestMsg, 229 },
+	{ OP_QuickbarInitMsg, 230 },
+	{ OP_QuickbarUpdateMsg, 231 },
+	{ OP_MacroInitMsg, 232 },
+	{ OP_MacroUpdateMsg, 233 },
+	{ OP_LevelChangedMsg, 235 },
+	{ OP_EncounterBrokenMsg, 237 },
+	{ OP_OnscreenMsgMsg, 238 },
+	{ OP_GuildEventAddMsg, 242 },
+	{ OP_GuildEventActionMsg, 243 },
+	{ OP_GuildEventListMsg, 244 },
+	{ OP_GuildBankUpdateMsg, 252 },
+	{ OP_GuildBankEventListMsg, 253 },
+	{ OP_RewardPackMsg, 255 },
+	{ OP_ChatFiltersMsg, 269 },
+	{ OP_MailSendMessageMsg, 272 },
+	{ OP_MailGetHeadersReplyMsg, 274 },
+	{ OP_MailGetMessageReplyMsg, 275 },
+	{ OP_MailSendMessageReplyMsg, 276 },
+	{ OP_WaypointReplyMsg, 281 },
+	{ OP_WaypointSelectMsg, 282 },
+	{ OP_WaypointUpdateMsg, 283 },
+	{ OP_ShowZoneTeleporterDestinations, 285 },
+	{ OP_SelectZoneTeleporterDestinatio, 286 },
+	{ OP_ReloadLocalizedTxtMsg, 287 },
+	{ OP_GuildMembershipResponseMsg, 289 },
+	{ OP_LeaveGuildNotifyMsg, 290 },
+	{ OP_JoinGuildNotifyMsg, 291 },
+	{ OP_AvatarUpdateMsg, 292 },
+	{ OP_BioUpdateMsg, 293 },
+	{ OP_CsCategoryRequestMsg, 298 },
+	{ OP_KnowledgeWindowSlotMappingMsg, 300 },
+	{ OP_PromoFlagsDetailsMsg, 306 },
+	{ OP_UpdateRaidMsg, 314 },
+	{ OP_TitleUpdateMsg, 317 },
+	{ OP_ClientFellMsg, 318 },
+	{ OP_TrackingUpdateMsg, 323 },
+	{ OP_BeginTrackingMsg, 324 },
+	{ OP_StopTrackingMsg, 325 },
+	{ OP_AdvancementRequestMsg, 327 },
+	{ OP_MapFogDataInitMsg, 328 },
+	{ OP_MapFogDataUpdateMsg, 329 },
+	{ OP_OfferQuestMsg, 334 },
+	{ OP_FlightPathsMsg, 345 },
+};
+
+static bool GetClientRootVeTypeOpcode(EmuOpcode opcode_name, int16 client_version, int16* opcode) {
+	if (!opcode || client_version != 546)
+		return false;
+
+	const int map_size = sizeof(client546RootOpcodeMap) / sizeof(client546RootOpcodeMap[0]);
+	for (int i = 0; i < map_size; ++i) {
+		if (client546RootOpcodeMap[i].opcode_name == opcode_name) {
+			*opcode = client546RootOpcodeMap[i].opcode;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool GetClientCmdVeTypeOpcode(EmuOpcode sub_opcode, int16 client_version, int16* opcode) {
+	if (!opcode || client_version != 546)
+		return false;
+
+	switch (sub_opcode) {
+	case OP_EqHearChatCmd:
+		*opcode = 411;
+		return true;
+	case OP_EqDisplayTextCmd:
+		*opcode = 412;
+		return true;
+	case OP_EqCreateGhostCmd:
+		*opcode = 413;
+		return true;
+	case OP_EqCreateWidgetCmd:
+		*opcode = 414;
+		return true;
+	case OP_EqCreateSignWidgetCmd:
+		*opcode = 415;
+		return true;
+	case OP_EqDestroyGhostCmd:
+		*opcode = 416;
+		return true;
+	case OP_EqUpdateGhostCmd:
+		*opcode = 417;
+		return true;
+	case OP_EqSetControlGhostCmd:
+		*opcode = 418;
+		return true;
+	case OP_EqSetPOVGhostCmd:
+		*opcode = 419;
+		return true;
+	case OP_EqHearCombatCmd:
+		*opcode = 420;
+		return true;
+	case OP_EqHearSpellCastCmd:
+		*opcode = 421;
+		return true;
+	case OP_EqHearSpellInterruptCmd:
+		*opcode = 422;
+		return true;
+	case OP_EqHearSpellFizzleCmd:
+		*opcode = 423;
+		return true;
+	case OP_EqHearConsiderCmd:
+		*opcode = 424;
+		return true;
+	case OP_EqSetDebugPathPointsCmd:
+		*opcode = 427;
+		return true;
+	case OP_EqCannedEmoteCmd:
+		*opcode = 429;
+		return true;
+	case OP_EqStateCmd:
+		*opcode = 430;
+		return true;
+	case OP_EqPlaySoundCmd:
+		*opcode = 431;
+		return true;
+	case OP_EqPlaySound3DCmd:
+		*opcode = 432;
+		return true;
+	case OP_EqPlayVoiceCmd:
+		*opcode = 433;
+		return true;
+	case OP_EqHearDrowningCmd:
+		*opcode = 434;
+		return true;
+	case OP_EqHearDeathCmd:
+		*opcode = 435;
+		return true;
+	case OP_EqGroupMemberRemovedCmd:
+		*opcode = 436;
+		return true;
+	case OP_EqReceiveOfferCmd:
+		*opcode = 438;
+		return true;
+	case OP_EqInspectPCResultsCmd:
+		*opcode = 439;
+		return true;
+	case OP_EqDialogOpenCmd:
+		*opcode = 441;
+		return true;
+	case OP_EqDialogCloseCmd:
+		*opcode = 442;
+		return true;
+	case OP_EqFactionUpdateCmd:
+		*opcode = 443;
+		return true;
+	case OP_EqCollectionUpdateCmd:
+		*opcode = 444;
+		return true;
+	case OP_EqCollectionFilterCmd:
+		*opcode = 445;
+		return true;
+	case OP_EqCollectionItemCmd:
+		*opcode = 446;
+		return true;
+	case OP_EqQuestJournalUpdateCmd:
+		*opcode = 447;
+		return true;
+	case OP_EqQuestJournalReplyCmd:
+		*opcode = 448;
+		return true;
+	case OP_EqUpdateMerchantCmd:
+		*opcode = 450;
+		return true;
+	case OP_EqUpdateStoreCmd:
+		*opcode = 451;
+		return true;
+	case OP_EqUpdatePlayerTradeCmd:
+		*opcode = 452;
+		return true;
+	case OP_EqHelpPathCmd:
+		*opcode = 453;
+		return true;
+	case OP_EqHelpPathClearCmd:
+		*opcode = 454;
+		return true;
+	case OP_EqUpdateBankCmd:
+		*opcode = 455;
+		return true;
+	case OP_EqExamineInfoCmd:
+		*opcode = 456;
+		return true;
+	case OP_EqUpdateLootCmd:
+		*opcode = 457;
+		return true;
+	case OP_EqJunctionListCmd:
+		*opcode = 458;
+		return true;
+	case OP_EqShowDeathWindowCmd:
+		*opcode = 459;
+		return true;
+	case OP_EqDisplaySpellFailCmd:
+		*opcode = 460;
+		return true;
+	case OP_EqSpellCastStartCmd:
+		*opcode = 461;
+		return true;
+	case OP_EqSpellCastEndCmd:
+		*opcode = 462;
+		return true;
+	case OP_EqResurrectedCmd:
+		*opcode = 463;
+		return true;
+	case OP_EqChoiceWinCmd:
+		*opcode = 464;
+		return true;
+	case OP_EqSetDefaultVerbCmd:
+		*opcode = 465;
+		return true;
+	case OP_EqInstructionWindowCloseCmd:
+		*opcode = 466;
+		return true;
+	case OP_EqInstructionWindowCmd:
+		*opcode = 467;
+		return true;
+	case OP_EqInstructionWindowGoalCmd:
+		*opcode = 468;
+		return true;
+	case OP_EqInstructionWindowTaskCmd:
+		*opcode = 469;
+		return true;
+	case OP_EqEnableGameEventCmd:
+		*opcode = 470;
+		return true;
+	case OP_EqShowWindowCmd:
+		*opcode = 471;
+		return true;
+	case OP_EqEnableWindowCmd:
+		*opcode = 472;
+		return true;
+	case OP_EqFlashWindowCmd:
+		*opcode = 473;
+		return true;
+	case OP_EqHearPlayFlavorCmd:
+		*opcode = 474;
+		return true;
+	case OP_EqUpdateSignWidgetCmd:
+		*opcode = 475;
+		return true;
+	case OP_EqShowBookCmd:
+		*opcode = 477;
+		return true;
+	case OP_EqQuestionnaireCmd:
+		*opcode = 478;
+		return true;
+	case OP_EqHearHealCmd:
+		*opcode = 480;
+		return true;
+	case OP_EqChatChannelUpdateCmd:
+		*opcode = 481;
+		return true;
+	case OP_EqWhoChannelQueryReplyCmd:
+		*opcode = 482;
+		return true;
+	case OP_EqAvailWorldChannelsCmd:
+		*opcode = 483;
+		return true;
+	case OP_EqUpdateTargetCmd:
+		*opcode = 484;
+		return true;
+	case OP_EqConsignmentItemsCmd:
+		*opcode = 485;
+		return true;
+	case OP_EqStartBrokerCmd:
+		*opcode = 486;
+		return true;
+	case OP_EqMapExplorationCmd:
+		*opcode = 487;
+		return true;
+	case OP_EqStoreLogCmd:
+		*opcode = 488;
+		return true;
+	case OP_EqSpellMoveToRangeAndRetryCmd:
+		*opcode = 489;
+		return true;
+	case OP_EqUpdatePlayerMailCmd:
+		*opcode = 490;
+		return true;
+	case OP_EqHearSpellNoLandCmd:
+		*opcode = 494;
+		return true;
+	case OP_Lottery:
+		*opcode = 495;
+		return true;
+	default:
+		return false;
+	}
+}
+#endif
+
 int16 PacketStruct::GetOpcodeValue(int16 client_version) {
 	int16 opcode = 0xFFFF;
 	bool client_cmd = false;
@@ -1602,6 +1991,11 @@ int16 PacketStruct::GetOpcodeValue(int16 client_version) {
 	if (client_cmd) {
 		EmuOpcode sub_opcode = EQOpcodeManager[0]->NameSearch(GetOpcodeType());
 		if (sub_opcode != OP_Unknown) { //numbers should be used at OpcodeTypes, define them!
+#ifndef LOGIN
+			if (GetClientCmdVeTypeOpcode(sub_opcode, client_version, &opcode))
+				return opcode;
+#endif
+
 			OpcodeVersion = GetOpcodeVersion(client_version);
 			if (EQOpcodeManager.count(OpcodeVersion) > 0) {
 				opcode = EQOpcodeManager[OpcodeVersion]->EmuToEQ(sub_opcode);
@@ -1612,6 +2006,11 @@ int16 PacketStruct::GetOpcodeValue(int16 client_version) {
 		}		
 	}
 	else {
+#ifndef LOGIN
+		if (GetClientRootVeTypeOpcode(GetOpcode(), client_version, &opcode))
+			return opcode;
+#endif
+
 		OpcodeVersion = GetOpcodeVersion(client_version);
 		if (EQOpcodeManager.count(OpcodeVersion) > 0) {
 			opcode = EQOpcodeManager[OpcodeVersion]->EmuToEQ(GetOpcode());

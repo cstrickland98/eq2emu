@@ -109,6 +109,8 @@ vector<TreeNodeData*> MasterAANodeList::GetTreeNodes() {
 
 EQ2Packet* MasterAAList::GetAAListPacket(Client* client)
 {
+	if (!client || client->GetVersion() <= 561)
+		return 0;
 
 	/*
 	-- OP_DispatchESMsg --
@@ -249,6 +251,9 @@ struct AAEntry {
 	int8 treeid;
 };
 void MasterAAList::DisplayAA(Client* client,int8 newtemplate,int8 changemode) {
+	if (!client || client->GetVersion() <= 561)
+		return;
+
 	map <int8, int32> AAtree_id;
 	map <int8, vector<TreeNodeData*> >::iterator itr_tree2;
 	vector<TreeNodeData*>::iterator itr_tree3;

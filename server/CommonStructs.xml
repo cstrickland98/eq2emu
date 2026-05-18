@@ -105,7 +105,6 @@ to zero and treated like placeholders." />
 <Data ElementName="hair_color1" Type="float" Size="3" />
 <Data ElementName="hair_color2" Type="float" Size="3" />
 <Data ElementName="hair_highlight" Type="float" Size="3" />
-<Data ElementName="unknown2" Type="int8" Size="26" />
 <Data ElementName="hair_file" Type="EQ2_16Bit_String" />
 <Data ElementName="hair_type_color" Type="float" Size="3" />
 <Data ElementName="hair_type_highlight_color" Type="float" Size="3" />

@@ -698,6 +698,12 @@ void Client::FatalError(int8 response) {
 }
 
 void Client::SendPlayFailed(int8 response){
+	if (GetVersion() <= 561) {
+		uchar response_byte = response;
+		QueuePacket(new EQ2Packet(OP_PlayCharacterReplyMsg, &response_byte, sizeof(response_byte)));
+		return;
+	}
+
 	PacketStruct* response_packet = configReader.getStruct("LS_PlayResponse", GetVersion());
 	if(response_packet){
 		response_packet->setDataByName("response", response);
