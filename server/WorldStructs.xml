@@ -410,6 +410,48 @@ to zero and treated like placeholders." />
 <Data ElementName="green" Type="int8" Size="1" />
 <Data ElementName="blue" Type="int8" Size="1" />
 </Struct>
+<Struct Name="WS_DisplayWarning" ClientVersion="546" OpcodeName="OP_DisplayWarningMsg">
+<Data ElementName="warning_type" Type="int8" />
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+<Data ElementName="message" Type="EQ2_16Bit_String" />
+<Data ElementName="unknown3" Type="int8" />
+<Data ElementName="unknown4" Type="int8" />
+<Data ElementName="unknown5" Type="int8" />
+<Data ElementName="unknown6" Type="int16" />
+<Data ElementName="unknown7" Type="int16" />
+<Data ElementName="unknown8" Type="int32" />
+</Struct>
+<Struct Name="WS_CustomizationReply" ClientVersion="546" OpcodeName="OP_CustomizationReplyMsg">
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+<Data ElementName="reply_code" Type="int8" />
+</Struct>
+<Struct Name="WS_ESZoneInstanceStatus" ClientVersion="546" OpcodeName="OP_ESZoneInstanceStatusMsg">
+<Data ElementName="status" Type="int8" />
+<Data ElementName="zone_name" Type="EQ2_16Bit_String" />
+<Data ElementName="instance_name" Type="EQ2_16Bit_String" />
+<Data ElementName="instance_id" Type="int16" />
+</Struct>
+<Struct Name="WS_ZonesStatus" ClientVersion="546" OpcodeName="OP_ZonesStatusMsg">
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="num_servers" Type="int16" OversizedValue="127" OversizedByte="127" />
+<Data ElementName="servers" Type="Array" ArraySizeVariable="num_servers">
+	<Data ElementName="server_name" Type="EQ2_16Bit_String" />
+	<Data ElementName="unknown2" Type="int32" />
+	<Data ElementName="unknown3" Type="int32" />
+	<Data ElementName="num_instances" Type="int16" OversizedValue="127" OversizedByte="127" />
+	<Data ElementName="instances" Type="Array" ArraySizeVariable="num_instances">
+		<Data ElementName="instance_name" Type="EQ2_16Bit_String" />
+		<Data ElementName="unknown4" Type="int32" />
+		<Data ElementName="unknown5" Type="int32" />
+		<Data ElementName="unknown6" Type="int32" />
+	</Data>
+</Data>
+</Struct>
+<Struct Name="WS_ClearData" ClientVersion="546" OpcodeName="OP_ClearDataMsg">
+<Data ElementName="data_type" Type="int8" />
+</Struct>
 <Struct Name="WS_LevelChanged" ClientVersion="1" OpcodeName="OP_LevelChangedMsg">
 <Data ElementName="old_level" Type="int16" />
 <Data ElementName="new_level" Type="int16" />
@@ -7503,7 +7545,7 @@ to zero and treated like placeholders." />
 </Struct>
 <Struct Name="WS_ServerControlFlags" ClientVersion="546" OpcodeName="OP_UpdateClientPredFlagsMsg" >
 <Data ElementName="parameter" Type="int32" />
-<Data ElementName="value" Type="int32" />
+<Data ElementName="value" Type="int8" />
 </Struct>
 <Struct Name="WS_ServerControlFlags" ClientVersion="562" OpcodeName="OP_ChangeServerControlFlagMsg" >
 <Data ElementName="parameter1" Type="int8" />
@@ -8923,6 +8965,13 @@ to zero and treated like placeholders." />
 </Struct>
 <Struct Name="WS_WaypointSelect" ClientVersion="1" OpcodeName="OP_WaypointSelectMsg">
 	<Data ElementName="selection" Type="int32" />
+</Struct>
+<Struct Name="WS_CharNameChanged" ClientVersion="546" OpcodeName="OP_CharNameChangedMsg">
+	<Data ElementName="new_name" Type="EQ2_16Bit_String" />
+	<Data ElementName="old_name" Type="EQ2_16Bit_String" />
+	<Data ElementName="unknown1" Type="int32" />
+	<Data ElementName="unknown2" Type="int32" />
+	<Data ElementName="unknown3" Type="int32" />
 </Struct>
 <Struct Name="WS_WaypointSelect" ClientVersion="562" OpcodeName="OP_WaypointSelectMsg">
 	<Data ElementName="num_selections" Type="int32" />
@@ -11192,6 +11241,89 @@ to zero and treated like placeholders." />
 <Data ElementName="unknown3" Type="int8" Size="1" />
 <Data ElementName="unknown4" Type="int8" Size="1" />
 </Struct>
+<Struct Name="WS_StartBroker" ClientVersion="546" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqStartBrokerCmd">
+<Data ElementName="spawn_id" Type="int32" />
+<Data ElementName="unknown" Type="int32" />
+<Data ElementName="unknown2" Type="int8" Size="5" />
+</Struct>
+<Struct Name="WS_StartBroker" ClientVersion="562" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqStartBrokerCmd">
+<Data ElementName="spawn_id" Type="int32" />
+<Data ElementName="unknown" Type="int32" />
+<Data ElementName="unknown2" Type="int8" Size="4" />
+<Data ElementName="unknown3" Type="int8" Size="1" />
+<Data ElementName="unknown4" Type="int8" Size="1" />
+</Struct>
+<Struct Name="WS_ConsignViewGetPage" ClientVersion="546" OpcodeName="OP_ConsignViewGetPageMsg">
+<Data ElementName="unknown64" Type="int64" />
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+<Data ElementName="unknown3" Type="int32" />
+<Data ElementName="unknown4" Type="int32" />
+</Struct>
+<Struct Name="WS_ConsignViewRelease" ClientVersion="546" OpcodeName="OP_ConsignViewReleaseMsg">
+<Data ElementName="unknown64" Type="int64" />
+<Data ElementName="unknown1" Type="int32" />
+</Struct>
+<Struct Name="WS_ConsignRemoveItems" ClientVersion="546" OpcodeName="OP_ConsignRemoveItemsMsg">
+<Data ElementName="unknown64" Type="int64" />
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+</Struct>
+<Struct Name="WS_ConsignViewSort" ClientVersion="546" OpcodeName="OP_ConsignViewSortMsg">
+<Data ElementName="unknown64" Type="int64" />
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+<Data ElementName="unknown65" Type="int64" />
+<Data ElementName="unknown3" Type="int32" />
+<Data ElementName="unknown4" Type="int32" />
+</Struct>
+<Struct Name="WS_UpdateDebugRadii" ClientVersion="546" OpcodeName="OP_UpdateDebugRadiiMsg">
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+<Data ElementName="unknown3" Type="int32" />
+<Data ElementName="unknown4" Type="int32" />
+<Data ElementName="unknown5" Type="int32" />
+<Data ElementName="unknown6" Type="int32" />
+<Data ElementName="unknown_blob" Type="int8" Size="12" />
+<Data ElementName="unknown7" Type="int32" />
+</Struct>
+<Struct Name="WS_Report" ClientVersion="546" OpcodeName="OP_ReportMsg">
+<Data ElementName="unknown_text1" Type="EQ2_16Bit_String" />
+<Data ElementName="unknown_text2" Type="EQ2_16Bit_String" />
+</Struct>
+<Struct Name="WS_CampClient" ClientVersion="546" OpcodeName="OP_CampClientMsg">
+<Data ElementName="unknown1" Type="int32" />
+</Struct>
+<Struct Name="WS_CSToolAccessResponse" ClientVersion="546" OpcodeName="OP_CSToolAccessResponseMsg">
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="response" Type="int8" />
+</Struct>
+<Struct Name="WS_DeleteGuild" ClientVersion="546" OpcodeName="OP_DeleteGuildMsg">
+<Data ElementName="guild_id" Type="int32" />
+</Struct>
+<Struct Name="WS_CloseGroupInviteWindow" ClientVersion="546" OpcodeName="OP_CloseGroupInviteWindowMsg">
+</Struct>
+<Struct Name="WS_MailEventNotification" ClientVersion="546" OpcodeName="OP_MailEventNotificationMsg">
+<Data ElementName="event_type" Type="int8" />
+<Data ElementName="unknown_text1" Type="EQ2_16Bit_String" />
+<Data ElementName="unknown_text2" Type="EQ2_16Bit_String" />
+<Data ElementName="unknown_text3" Type="EQ2_16Bit_String" />
+</Struct>
+<Struct Name="WS_DisplayMailScreen" ClientVersion="546" OpcodeName="OP_DisplayMailScreenMsg">
+<Data ElementName="unknown1" Type="int32" />
+</Struct>
+<Struct Name="WS_AuctionCharacterReply" ClientVersion="546" OpcodeName="OP_AuctionCharacterReply">
+<Data ElementName="status" Type="int8" />
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+<Data ElementName="unknown64" Type="int64" />
+</Struct>
+<Struct Name="WS_LFGUpdate" ClientVersion="546" OpcodeName="OP_LFGUpdateMsg">
+<Data ElementName="unknown1" Type="int8" />
+<Data ElementName="unknown2" Type="int8" />
+</Struct>
+<Struct Name="WS_ClientInDeathRegion" ClientVersion="546" OpcodeName="OP_ClientInDeathRegionMsg">
+</Struct>
 <Struct Name="WS_BrokerBags" ClientVersion="1" OpcodeName="OP_ChatToggleFriendMsg" >
 <Data ElementName="char_id" Type="int32" />
 <Data ElementName="num_bags" Type="int8" />
@@ -11602,6 +11734,10 @@ to zero and treated like placeholders." />
 <Data ElementName="date" Type="int32" Size="1" />
 <Data ElementName="type" Type="int32" Size="1" />
 <Data ElementName="description" Type="EQ2_16Bit_String" Size="1" />
+</Struct>
+<Struct Name="WS_RequestGuildMembership" ClientVersion="546" OpcodeName="OP_RequestGuildMembershipMsg">
+<Data ElementName="guild_id" Type="int32" Size="1" />
+<Data ElementName="character_id" Type="int32" Size="1" />
 </Struct>
 <!-- KoS, DoF and earlier clients need to be structured properly here -->
 <Struct Name="WS_GuildMembershipResponse" ClientVersion="1" OpcodeName="OP_GuildMembershipResponseMsg">
@@ -16788,6 +16924,29 @@ to zero and treated like placeholders." />
 <Data ElementName="location_z" Type="float" Size="1" />
 </Data>
 </Struct>
+<Struct Name="WS_MapExploration" ClientVersion="546" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqMapExplorationCmd">
+<Data ElementName="num_locations" Type="int16" Size="1" />
+<Data ElementName="location_array" Type="Array" ArraySizeVariable="num_locations">
+<Data ElementName="location_x" Type="float" Size="1" />
+<Data ElementName="location_y" Type="float" Size="1" />
+<Data ElementName="location_z" Type="float" Size="1" />
+</Data>
+</Struct>
+<Struct Name="WS_MapExploration" ClientVersion="562" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqMapExplorationCmd">
+<Data ElementName="unknown" Type="int16" Size="1" />
+<Data ElementName="num_locations" Type="int16" Size="1" />
+<Data ElementName="location_array" Type="Array" ArraySizeVariable="num_locations">
+<Data ElementName="location_x" Type="float" Size="1" />
+<Data ElementName="location_y" Type="float" Size="1" />
+<Data ElementName="location_z" Type="float" Size="1" />
+</Data>
+</Struct>
+<Struct Name="WS_SpellMoveToRangeAndRetry" ClientVersion="546" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqSpellMoveToRangeAndRetryCmd">
+<Data ElementName="target_id" Type="int32" />
+<Data ElementName="spell_id" Type="int32" />
+<Data ElementName="range" Type="float" />
+<Data ElementName="spell_name" Type="EQ2_16Bit_String" />
+</Struct>
 <Struct Name="WS_GetMailHeader" ClientVersion="1" OpcodeName="OP_MailGetHeadersReplyMsg">
 <Data ElementName="kiosk_id" Type="int32" />
 <Data ElementName="num_messages" Type="int8" Size="1" />
@@ -16850,7 +17009,7 @@ to zero and treated like placeholders." />
     <Data ElementName="player_to_id" Type="int32" Size="1" />
     <Data ElementName="subject" Type="EQ2_16Bit_String" />
     <Data ElementName="player_from" Type="EQ2_16Bit_String" />
-    <Data ElementName="unknown1" Type="int16" Size="1" />
+    <Data ElementName="unknown_text" Type="EQ2_16Bit_String" />
     <Data ElementName="already_read" Type="int8" Size="1" />
     <Data ElementName="mail_deletion" Type="int32" Size="1" />
     <Data ElementName="mail_type" Type="int8" Size="1" />
@@ -16867,8 +17026,7 @@ to zero and treated like placeholders." />
 </Data>
 <Data ElementName="postage_cost" Type="int32" Size="1" />
 <Data ElementName="attachment_cost" Type="int32" Size="1" />
-<Data ElementName="unknown3" Type="int16" Size="1" />
-<Data ElementName="unknown4" Type="int8" Size="4" />
+<Data ElementName="unknown3" Type="int32" Size="1" />
 </Struct>
 <Struct Name="WS_GetMailHeader" ClientVersion="1193" OpcodeName="OP_MailGetHeadersReplyMsg">
 <Data ElementName="kiosk_id" Type="int32" />
@@ -16941,7 +17099,9 @@ to zero and treated like placeholders." />
 <Data ElementName="end_tagx" Type="int16" IfVariableNotSet="item_%i"/>
 <Data ElementName="end_tag2" Type="int16" IfVariableNotSet="item_%i"/>
 <Data ElementName="end_tag3" Type="int8" IfVariableNotSet="item_%i"/>
-<Data ElementName="end_tag4" Type="int8" size="5"/>
+<Data ElementName="end_tag4" Type="int32"/>
+<Data ElementName="unknown3a" Type="int64" />
+<Data ElementName="unknown4" Type="int8" />
 </Struct>
 <Struct Name="WS_MailGetMessage" ClientVersion="1193" OpcodeName="OP_MailGetMessageReplyMsg">
 <Data ElementName="kiosk_id" Type="int32" />
@@ -16998,7 +17158,63 @@ to zero and treated like placeholders." />
 <Data ElementName="unknown3" Type="int8" />
 <Data ElementName="unknown4" Type="int32" />
 </Struct>
+<Struct Name="WS_MailCommitSendMessage" ClientVersion="546" OpcodeName="OP_MailCommitSendMessageMsg">
+<Data ElementName="unknown64" Type="int64" />
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="player_to" Type="EQ2_16Bit_String" />
+<Data ElementName="unknown2" Type="int32" />
+</Struct>
+<Struct Name="WS_MailSendSystemMessage" ClientVersion="546" OpcodeName="OP_MailSendSystemMessageMsg">
+<Data ElementName="player_to" Type="EQ2_16Bit_String" />
+<Data ElementName="player_from" Type="EQ2_16Bit_String" />
+<Data ElementName="subject" Type="EQ2_16Bit_String" />
+<Data ElementName="mail_body" Type="EQ2_16Bit_String" />
+<Data ElementName="unknown64" Type="int64" />
+<Data ElementName="coin_copper" Type="int32" />
+<Data ElementName="coin_silver" Type="int32" />
+<Data ElementName="coin_gold" Type="int32" />
+<Data ElementName="coin_plat" Type="int32" />
+<Data ElementName="item" Type="EQ2_Item" Optional="TRUE"/>
+<Data ElementName="end_tagx" Type="int16" IfVariableNotSet="item"/>
+<Data ElementName="end_tag2" Type="int16" IfVariableNotSet="item"/>
+<Data ElementName="end_tag3" Type="int8" IfVariableNotSet="item"/>
+<Data ElementName="unknown2" Type="int32"/>
+</Struct>
+<Struct Name="WS_MailRemoveAttachFromMail" ClientVersion="546" OpcodeName="OP_MailRemoveAttachFromMailMsg">
+<Data ElementName="unknown_text" Type="EQ2_16Bit_String" />
+<Data ElementName="mail_id" Type="int32" />
+<Data ElementName="unknown1" Type="int32" />
+</Struct>
 <Struct Name="WS_UpdatePlayerMail" ClientVersion="1" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqUpdatePlayerMailCmd">
+<Data ElementName="action" Type="int8" />
+<Data ElementName="coin_copper" Type="int32" />
+<Data ElementName="coin_silver" Type="int32" />
+<Data ElementName="coin_gold" Type="int32" />
+<Data ElementName="coin_plat" Type="int32" />
+<Data ElementName="item" Type="EQ2_Item" Optional="TRUE"/>
+<Data ElementName="end_tagx" Type="int16" IfVariableNotSet="item"/>
+<Data ElementName="end_tag2" Type="int16" IfVariableNotSet="item"/>
+<Data ElementName="end_tag3" Type="int8" IfVariableNotSet="item"/>
+<Data ElementName="unknown2" Type="int8" Size="5"/>
+<Data ElementName="mail_id" Type="int32" Size="1"/>
+<Data ElementName="unread" Type="int16"/>
+<Data ElementName="attachments" Type="int16"/>
+</Struct>
+<Struct Name="WS_UpdatePlayerMail" ClientVersion="546" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqUpdatePlayerMailCmd">
+<Data ElementName="action" Type="int8" />
+<Data ElementName="coin_copper" Type="int32" />
+<Data ElementName="coin_silver" Type="int32" />
+<Data ElementName="coin_gold" Type="int32" />
+<Data ElementName="coin_plat" Type="int32" />
+<Data ElementName="item" Type="EQ2_Item" Optional="TRUE"/>
+<Data ElementName="end_tagx" Type="int16" IfVariableNotSet="item"/>
+<Data ElementName="end_tag2" Type="int16" IfVariableNotSet="item"/>
+<Data ElementName="end_tag3" Type="int8" IfVariableNotSet="item"/>
+<Data ElementName="unknown2" Type="int32"/>
+<Data ElementName="unread" Type="int8"/>
+<Data ElementName="mail_id" Type="int32" Size="1"/>
+</Struct>
+<Struct Name="WS_UpdatePlayerMail" ClientVersion="562" OpcodeName="OP_ClientCmdMsg" OpcodeType="OP_EqUpdatePlayerMailCmd">
 <Data ElementName="action" Type="int8" />
 <Data ElementName="coin_copper" Type="int32" />
 <Data ElementName="coin_silver" Type="int32" />
@@ -17649,6 +17865,7 @@ to zero and treated like placeholders." />
 	<Data ElementName="text" Type="EQ2_16Bit_String" Size="1" />
 	<Data ElementName="claimed_on_this_char" Type="int8" Size="1" />		
 </Data>
+<Data ElementName="item_detail_count" Type="int16" Size="1" />
 </Struct>
 <Struct Name="WS_PromoFlagsDetails" ClientVersion="562" OpcodeName="OP_PromoFlagsDetailsMsg">
 <Data ElementName="num_claim_items" Type="int32" Size="1" />
@@ -18662,6 +18879,44 @@ to zero and treated like placeholders." />
   <Data ElementName="recipes_array" Type="Array" ArraySizeVariable="num_recipes">
     <Data ElementName="recipe_id" Type="int32" Size="1" />
   </Data>
+</Struct>
+<Struct Name="WS_DisplayHouseStatus" ClientVersion="546" OpcodeName="OP_PlayerHouseDisplayStatusMsg">
+<Data ElementName="house_name" Type="EQ2_16Bit_String" />
+<Data ElementName="upkeep_due" Type="int32" />
+<Data ElementName="upkeep_coin" Type="int64" />
+<Data ElementName="upkeep_status" Type="int32" />
+<Data ElementName="escrow_coin" Type="int64" />
+<Data ElementName="escrow_status" Type="int32" />
+<Data ElementName="house_location" Type="EQ2_16Bit_String" />
+<Data ElementName="access_type" Type="int8" />
+</Struct>
+<Struct Name="WS_PlayerHouseCloseUI" ClientVersion="546" OpcodeName="OP_PlayerHouseCloseUIMsg">
+<Data ElementName="house_id" Type="int32" />
+<Data ElementName="closed" Type="int8" />
+<Data ElementName="house_name" Type="EQ2_16Bit_String" IfVariableNotSet="closed" />
+<Data ElementName="unknown1" Type="int8" IfVariableNotSet="closed" />
+</Struct>
+<Struct Name="WS_HouseCustomizationScreen" ClientVersion="546" OpcodeName="OP_HouseCustomizationScreenMsg">
+<Data ElementName="count" Type="int8" />
+<Data ElementName="customizations" Type="Array" ArraySizeVariable="count">
+	<Data ElementName="customization_id" Type="int32" />
+	<Data ElementName="customization_name" Type="EQ2_16Bit_String" />
+</Data>
+</Struct>
+<Struct Name="WS_CustomizationSetRequest" ClientVersion="546" OpcodeName="OP_CustomizationSetRequestMsg">
+<Data ElementName="house_name" Type="EQ2_16Bit_String" />
+<Data ElementName="house_id" Type="int32" />
+<Data ElementName="count" Type="int16" OversizedValue="127" OversizedByte="127" />
+<Data ElementName="customizations" Type="Array" ArraySizeVariable="count">
+	<Data ElementName="customization_id" Type="int32" />
+	<Data ElementName="customization_name" Type="EQ2_16Bit_String" />
+	<Data ElementName="unknown64a" Type="int64" />
+	<Data ElementName="unknown1" Type="int32" />
+	<Data ElementName="unknown64b" Type="int64" />
+	<Data ElementName="unknown2" Type="int32" />
+	<Data ElementName="unknown3" Type="int8" />
+	<Data ElementName="unknown4" Type="int8" />
+</Data>
 </Struct>
 <Struct Name="WS_DisplayHouseStatus" ClientVersion="1096" OpcodeName="OP_PlayerHouseDisplayStatusMsg">
 <Data ElementName="unknown1" Type="int32" Size="1" />
@@ -19947,6 +20202,15 @@ to zero and treated like placeholders." />
 <Data ElementName="default_group_lock_method" Type="int8" Size="1" /> <!-- 0 = leader, 1 = anyone -->
 <Data ElementName="group_autolock" Type="int8" Size="1" /> <!-- 0 = false, 1 = true, if set to 0 default_group_lock_method is not sent if changed after -->
 </Struct>
+<Struct Name="WS_DisplayGroupOptionsScreen" ClientVersion="546" OpcodeName="OP_DisplayGroupOptionsScreenMsg">
+<Data ElementName="loot_method" Type="int8" />
+<Data ElementName="loot_items_rarity" Type="int8" />
+<Data ElementName="auto_split_coin" Type="int8" />
+<Data ElementName="default_yell_method" Type="int8" />
+<Data ElementName="default_group_lock_method" Type="int8" />
+<Data ElementName="group_autolock" Type="int8" />
+<Data ElementName="unknown1" Type="int8" />
+</Struct>
 <Struct Name="WS_DefaultGroupOptions" ClientVersion="562" OpcodeName="OP_DefaultGroupOptionsMsg" >
 <Data ElementName="loot_method" Type="int8" Size="1" />
 <Data ElementName="loot_items_rarity" Type="int8" Size="1" />
@@ -20953,6 +21217,29 @@ to zero and treated like placeholders." />
 <Struct Name="WS_CsCategoryRequestMsg" ClientVersion="1" OpcodeName="OP_CsCategoryRequestMsg">
 <Data ElementName="unknown" Type="int32" />
 </Struct>
+<Struct Name="WS_CsCategoryResponseMsg" ClientVersion="546" OpcodeName="OP_CsCategoryResponseMsg">
+<Data ElementName="unknown" Type="int32" />
+<Data ElementName="num_categories" Type="int32" />
+<Data ElementName="category_array" Type="Array" ArraySizeVariable="num_categories">
+  <Data ElementName="category_name" Type="EQ2_16Bit_String" />
+  <Data ElementName="category_id" Type="int32" />
+  <Data ElementName="num_subcategories" Type="int32" />
+  <Data ElementName="subcategory_array" Type="Array" ArraySizeVariable="num_subcategories">
+    <Data ElementName="subcategory_name" Type="EQ2_16Bit_String" />
+    <Data ElementName="subcategory_id" Type="int32" />
+  </Data>
+</Data>
+</Struct>
+<Struct Name="WS_KnowledgebaseResponseMsg" ClientVersion="546" OpcodeName="OP_KnowledgebaseResponseMsg">
+<Data ElementName="unknown" Type="int32" />
+<Data ElementName="num_articles" Type="int32" />
+<Data ElementName="article_array" Type="Array" ArraySizeVariable="num_articles">
+  <Data ElementName="article_title" Type="EQ2_16Bit_String" />
+  <Data ElementName="article_id" Type="int32" />
+  <Data ElementName="article_summary" Type="EQ2_16Bit_String" />
+</Data>
+<Data ElementName="article_text" Type="EQ2_16Bit_String" />
+</Struct>
 <Struct Name="WS_KnowledgebaseRequestMsg" ClientVersion="1" OpcodeName="OP_KnowledgebaseRequestMsg">
 <Data ElementName="unknown" Type="int32" />
 <Data ElementName="unknown1" Type="int16" />
@@ -20960,6 +21247,36 @@ to zero and treated like placeholders." />
 </Struct>
 <Struct Name="WS_CSTicketHeaderRequestMsg" ClientVersion="1" OpcodeName="OP_CSTicketHeaderRequestMsg">
 <Data ElementName="unknown" Type="int32" />
+</Struct>
+<Struct Name="WS_CSTicketInfoMsg" ClientVersion="546" OpcodeName="OP_CSTicketInfoMsg">
+<Data ElementName="unknown" Type="int32" />
+<Data ElementName="num_tickets" Type="int32" />
+<Data ElementName="ticket_array" Type="Array" ArraySizeVariable="num_tickets">
+  <Data ElementName="unknown1" Type="int32" />
+  <Data ElementName="unknown2" Type="int32" />
+  <Data ElementName="unknown3" Type="int32" />
+  <Data ElementName="ticket_title" Type="EQ2_16Bit_String" />
+  <Data ElementName="unknown4" Type="int32" />
+  <Data ElementName="unknown5" Type="int32" />
+  <Data ElementName="unknown6" Type="int32" />
+  <Data ElementName="ticket_text" Type="EQ2_16Bit_String" />
+</Data>
+</Struct>
+<Struct Name="WS_CSTicketCommentResponseMsg" ClientVersion="546" OpcodeName="OP_CSTicketCommentResponseMsg">
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="unknown2" Type="int32" />
+<Data ElementName="num_comments" Type="int32" />
+<Data ElementName="comment_array" Type="Array" ArraySizeVariable="num_comments">
+  <Data ElementName="unknown3" Type="int8" />
+  <Data ElementName="unknown4" Type="int32" />
+  <Data ElementName="commenter" Type="EQ2_16Bit_String" />
+  <Data ElementName="comment" Type="EQ2_16Bit_String" />
+</Data>
+</Struct>
+<Struct Name="WS_CSTicketChangeNotificationMsg" ClientVersion="546" OpcodeName="OP_CSTicketChangeNotificationMsg">
+<Data ElementName="unknown1" Type="int32" />
+<Data ElementName="notification_type" Type="int8" />
+<Data ElementName="unknown2" Type="int32" />
 </Struct>
 <Struct Name="WS_LFGGroupSearch" ClientVersion="1" OpcodeName="OP_LFGGroupSearch">
 	<Data ElementName="type" Type="int32" />
@@ -21096,6 +21413,13 @@ to zero and treated like placeholders." />
     <Data ElementName="unknown" Type="int8" Size="60" />
 </Struct>
 <Struct Name="WS_KeymapNoneMsg" ClientVersion="546" OpcodeName="OP_KeymapNoneMsg">
+</Struct>
+<Struct Name="WS_UISettingsResponse" ClientVersion="546" OpcodeName="OP_UISettingsResponseMsg">
+	<Data ElementName="byte_count" Type="int16" />
+	<Data ElementName="settings_bytes" Type="Array" ArraySizeVariable="byte_count">
+		<Data ElementName="setting_byte" Type="int8" />
+	</Data>
+	<Data ElementName="unknown" Type="int16" />
 </Struct>
 <Struct Name="WS_KeymapDataMsg" ClientVersion="1" OpcodeName="OP_KeymapDataMsg">
 	<Data ElementName="packed_size" Type="int32" />
