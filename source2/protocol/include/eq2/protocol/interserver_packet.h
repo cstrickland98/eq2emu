@@ -9,11 +9,14 @@
 
 #include <eq2/protocol/packet_buffer.h>
 
+#include <zlib.h>
+
 namespace eq2::protocol {
 
 inline constexpr std::size_t kInterserverPacketHeaderSize = 7;
 inline constexpr std::uint8_t kInterserverPacketCompressedFlag = 0x01;
 inline constexpr std::uint8_t kInterserverPacketDestinationFlag = 0x02;
+inline constexpr std::uint32_t kMaxInterserverInflatedPayloadSize = 16U * 1024U * 1024U;
 
 struct InterserverPacketEncodeOptions {
   bool compressed = false;
@@ -113,6 +116,31 @@ inline auto decode_interserver_packet(std::span<const std::uint8_t> bytes)
       .inflated_size = inflated_size,
       .destination = destination,
   };
+}
+
+inline auto inflate_interserver_payload(const InterserverPacket& packet)
+    -> std::optional<std::vector<std::uint8_t>> {
+  if (!packet.compressed) {
+    return std::vector<std::uint8_t>(packet.payload.begin(), packet.payload.end());
+  }
+
+  if (packet.inflated_size == 0 ||
+      packet.inflated_size > kMaxInterserverInflatedPayloadSize) {
+    return std::nullopt;
+  }
+
+  auto inflated = std::vector<std::uint8_t>(packet.inflated_size);
+  auto inflated_size = static_cast<uLongf>(inflated.size());
+  const auto result = uncompress(inflated.data(),
+                                 &inflated_size,
+                                 reinterpret_cast<const Bytef*>(packet.payload.data()),
+                                 static_cast<uLong>(packet.payload.size()));
+  if (result != Z_OK) {
+    return std::nullopt;
+  }
+
+  inflated.resize(static_cast<std::size_t>(inflated_size));
+  return inflated;
 }
 
 }  // namespace eq2::protocol

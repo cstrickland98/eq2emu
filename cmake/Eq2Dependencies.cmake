@@ -4,6 +4,12 @@ add_library(eq2_external_threads INTERFACE)
 add_library(eq2::external::threads ALIAS eq2_external_threads)
 target_link_libraries(eq2_external_threads INTERFACE Threads::Threads)
 
+find_package(ZLIB REQUIRED)
+
+add_library(eq2_external_zlib INTERFACE)
+add_library(eq2::external::zlib ALIAS eq2_external_zlib)
+target_link_libraries(eq2_external_zlib INTERFACE ZLIB::ZLIB)
+
 option(EQ2_SOURCE2_ENABLE_MARIADB "Enable source2 MariaDB Connector/C support when available" ON)
 set(EQ2_MARIADB_ROOT "" CACHE PATH "Optional MariaDB Connector/C SDK root")
 

@@ -13,6 +13,7 @@ namespace eq2::login {
 
 inline constexpr auto kServerOpKeepAlive = eq2::protocol::kServerOpKeepAlive;
 inline constexpr auto kServerOpLsInfo = eq2::protocol::kServerOpLsInfo;
+inline constexpr auto kServerOpLsStatus = eq2::protocol::kServerOpLsStatus;
 inline constexpr auto kServerLsInfoPayloadSize = eq2::protocol::kServerLsInfoPayloadSize;
 inline constexpr std::string_view kLegacyInterserverProtocolVersion = "0.5.0";
 
@@ -49,6 +50,10 @@ struct RegisteredWorld {
   std::string account;
   std::string display_name;
   std::string address;
+  std::int32_t status = 0;
+  std::int32_t player_count = 0;
+  std::int32_t zone_count = 0;
+  std::int32_t world_max_level = 0;
   bool is_development_server = false;
 };
 

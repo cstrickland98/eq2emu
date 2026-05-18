@@ -15,6 +15,7 @@
 #include <eq2/net/tcp_server.h>
 #include <eq2/protocol/interserver_packet.h>
 #include <eq2/protocol/login_world.h>
+#include <eq2/protocol/packet_header.h>
 
 namespace eq2::world {
 
@@ -30,6 +31,8 @@ struct WorldServerConfig {
   std::string protocol_version = "0.5.0";
   std::string server_version = "source2";
   std::uint32_t database_version = 0;
+  eq2::protocol::ApplicationOpcodeWidth client_opcode_width =
+      eq2::protocol::ApplicationOpcodeWidth::packed_u16;
   eq2::net::BackpressurePolicy backpressure;
 };
 
@@ -74,6 +77,11 @@ inline auto load_world_server_config(const eq2::core::ConfigProvider& config) ->
       .protocol_version = config.get("world.protocol_version").value_or("0.5.0"),
       .server_version = config.get("world.server_version").value_or("source2"),
       .database_version = parse_config_u32_or(config.get("world.database_version").value_or("0"), 0),
+      .client_opcode_width =
+          eq2::protocol::parse_application_opcode_width(
+              config.get("world.opcode_width").value_or(
+                  config.get("world.application_opcode_width").value_or("packed")))
+              .value_or(eq2::protocol::ApplicationOpcodeWidth::packed_u16),
   };
 }
 

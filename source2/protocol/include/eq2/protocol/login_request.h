@@ -48,21 +48,13 @@ inline auto parse_legacy_login_request(std::span<const std::uint8_t> bytes)
     return std::nullopt;
   }
 
-  for (auto i = 0; i < 4; ++i) {
-    if (!read_eq2_16bit_string(reader)) {
-      return std::nullopt;
-    }
+  if (!read_i32_le(reader) || !read_i32_le(reader)) {
+    return std::nullopt;
   }
 
   auto version = read_i16_le(reader);
   if (!version) {
     return std::nullopt;
-  }
-
-  for (auto i = 0; i < 2; ++i) {
-    if (!read_i32_le(reader)) {
-      return std::nullopt;
-    }
   }
 
   return LoginRequest{

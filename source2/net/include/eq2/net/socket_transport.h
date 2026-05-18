@@ -132,6 +132,14 @@ inline auto sockaddr_key(const sockaddr_in& address) -> std::uint64_t {
          static_cast<std::uint64_t>(ntohs(address.sin_port));
 }
 
+inline auto sockaddr_address_string(const sockaddr_in& address) -> std::string {
+  char buffer[INET_ADDRSTRLEN]{};
+  if (inet_ntop(AF_INET, &address.sin_addr, buffer, sizeof(buffer)) == nullptr) {
+    return {};
+  }
+  return buffer;
+}
+
 inline auto send_socket_bytes(NativeSocket socket, std::span<const std::uint8_t> bytes) -> bool {
   auto written = std::size_t{0};
   while (written < bytes.size()) {
@@ -256,6 +264,23 @@ class TcpSocketServer {
     return send_socket_bytes(iter->second, bytes);
   }
 
+  auto disconnect(SessionId session) -> bool {
+    NativeSocket socket = kInvalidSocket;
+    {
+      std::lock_guard lock(sockets_mutex_);
+      const auto iter = client_sockets_.find(session.value);
+      if (iter == client_sockets_.end()) {
+        return false;
+      }
+
+      socket = iter->second;
+      client_sockets_.erase(iter);
+    }
+
+    close_socket(socket);
+    return true;
+  }
+
  private:
   void emit(SessionEvent event) {
     if (sink_) {
@@ -282,7 +307,14 @@ class TcpSocketServer {
   void accept_loop() {
     auto next_session = std::uint64_t{1};
     while (running_) {
-      const auto client_socket = accept(listen_socket_, nullptr, nullptr);
+      sockaddr_in remote{};
+#ifdef _WIN32
+      auto remote_length = static_cast<int>(sizeof(remote));
+#else
+      auto remote_length = static_cast<socklen_t>(sizeof(remote));
+#endif
+      const auto client_socket =
+          accept(listen_socket_, reinterpret_cast<sockaddr*>(&remote), &remote_length);
       if (client_socket == kInvalidSocket) {
         break;
       }
@@ -293,6 +325,7 @@ class TcpSocketServer {
           .type = SessionEventType::accepted,
           .session = id,
           .transport = TransportKind::tcp,
+          .remote_address = sockaddr_address_string(remote),
       });
 
       client_workers_.emplace_back([this, id, client_socket] {
@@ -549,6 +582,7 @@ class UdpSocketServer {
             .type = SessionEventType::connected,
             .session = id,
             .transport = TransportKind::udp,
+            .remote_address = sockaddr_address_string(remote),
         });
       }
 
@@ -557,6 +591,7 @@ class UdpSocketServer {
           .session = id,
           .transport = TransportKind::udp,
           .bytes = {buffer.begin(), buffer.begin() + received},
+          .remote_address = sockaddr_address_string(remote),
       });
     }
   }

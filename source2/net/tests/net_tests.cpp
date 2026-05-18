@@ -217,6 +217,7 @@ void real_tcp_transport_accepts_loopback_when_bound_to_any_address() {
           "real TCP transport any-address endpoint accepts loopback client");
 
   auto observed = false;
+  auto observed_remote = false;
   for (auto attempt = 0; attempt < 50 && !observed; ++attempt) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     std::lock_guard lock(mutex);
@@ -224,11 +225,15 @@ void real_tcp_transport_accepts_loopback_when_bound_to_any_address() {
       observed = observed || (event.type == eq2::net::SessionEventType::received &&
                               event.transport == eq2::net::TransportKind::tcp &&
                               event.bytes == std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+      observed_remote = observed_remote ||
+                        (event.type == eq2::net::SessionEventType::accepted &&
+                         event.remote_address == "127.0.0.1");
     }
   }
 
   server.stop();
   require(observed, "real TCP transport any-address endpoint emits received event");
+  require(observed_remote, "real TCP transport records loopback remote address");
 }
 
 void real_tcp_transport_processes_simultaneous_clients() {
@@ -293,6 +298,7 @@ void real_udp_transport_exchanges_loopback_datagrams() {
           "real UDP transport accepts loopback datagrams");
 
   auto observed = false;
+  auto observed_remote = false;
   for (auto attempt = 0; attempt < 50 && !observed; ++attempt) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     std::lock_guard lock(mutex);
@@ -300,11 +306,15 @@ void real_udp_transport_exchanges_loopback_datagrams() {
       observed = observed || (event.type == eq2::net::SessionEventType::received &&
                               event.transport == eq2::net::TransportKind::udp &&
                               event.bytes == std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+      observed_remote = observed_remote ||
+                        (event.type == eq2::net::SessionEventType::connected &&
+                         event.remote_address == "127.0.0.1");
     }
   }
 
   server.stop();
   require(observed, "real UDP transport emits received event with loopback datagram");
+  require(observed_remote, "real UDP transport records loopback remote address");
 }
 
 void real_udp_transport_writes_loopback_response() {

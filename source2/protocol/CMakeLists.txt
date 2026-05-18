@@ -7,6 +7,7 @@ target_include_directories(eq2_protocol INTERFACE
 
 target_link_libraries(eq2_protocol INTERFACE
   eq2::core
+  eq2::external::zlib
 )
 
 eq2_target_defaults(eq2_protocol)

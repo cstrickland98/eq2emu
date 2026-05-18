@@ -28,7 +28,7 @@ struct SessionResponse {
   std::uint8_t format = 0;
   std::uint8_t unknown_b = 0;
   std::uint32_t max_length = 0;
-  std::uint32_t unknown_d = 0;
+  std::uint32_t unknown_d = 2;
 };
 
 inline auto encode_session_request(const SessionRequest& request)

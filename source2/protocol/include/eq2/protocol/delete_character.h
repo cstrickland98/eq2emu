@@ -23,9 +23,7 @@ struct DeleteCharacterResponse {
   std::uint8_t response = 0;
   std::int32_t server_id = 0;
   std::int32_t character_id = 0;
-  std::int32_t account_id = 0;
   std::string character_name;
-  std::int32_t max_characters = 0;
 };
 
 inline auto parse_delete_character_request(std::span<const std::uint8_t> bytes)
@@ -64,9 +62,7 @@ inline auto encode_delete_character_response_payload(const DeleteCharacterRespon
   writer.append_u8(response.response);
   append_i32_le(writer, response.server_id);
   append_i32_le(writer, response.character_id);
-  append_i32_le(writer, response.account_id);
   append_eq2_16bit_string(writer, response.character_name);
-  append_i32_le(writer, response.max_characters);
   return std::move(writer).into_bytes();
 }
 
@@ -77,11 +73,8 @@ inline auto decode_delete_character_response_payload(std::span<const std::uint8_
   auto response = reader.read_u8();
   auto server_id = read_i32_le(reader);
   auto character_id = read_i32_le(reader);
-  auto account_id = read_i32_le(reader);
   auto character_name = read_eq2_16bit_string(reader);
-  auto max_characters = read_i32_le(reader);
-  if (!response || !server_id || !character_id || !account_id || !character_name ||
-      !max_characters) {
+  if (!response || !server_id || !character_id || !character_name) {
     return std::nullopt;
   }
 
@@ -89,9 +82,7 @@ inline auto decode_delete_character_response_payload(std::span<const std::uint8_
       .response = *response,
       .server_id = *server_id,
       .character_id = *character_id,
-      .account_id = *account_id,
       .character_name = std::move(*character_name),
-      .max_characters = *max_characters,
   };
 }
 

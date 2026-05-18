@@ -67,6 +67,7 @@ class LiveWorldService {
   }
 
   void stop() {
+    login_client_.close();
     client_transport_.stop();
   }
 
@@ -84,11 +85,14 @@ class LiveWorldService {
       return false;
     }
 
-    const auto sent = eq2::net::send_tcp(eq2::net::SocketEndpoint{
-                                             .address = config_.login_address,
-                                             .port = config_.login_port,
-                                         },
-                                         *frame);
+    const auto connected = login_client_.connect_to(eq2::net::SocketEndpoint{
+        .address = config_.login_address,
+        .port = config_.login_port,
+    });
+    const auto sent = connected && login_client_.send(*frame);
+    if (!sent) {
+      login_client_.close();
+    }
     record_event(LiveWorldEvent{
         .type = sent ? LiveWorldEventType::registered_with_login
                      : LiveWorldEventType::registration_failed,
@@ -202,7 +206,10 @@ class LiveWorldService {
       return;
     }
 
-    auto& pipeline = pipelines_[event.session.value];
+    eq2::protocol::StreamPipelineOptions pipeline_options;
+    pipeline_options.application_opcode_width = config_.client_opcode_width;
+    auto pipeline_result = pipelines_.try_emplace(event.session.value, pipeline_options);
+    auto& pipeline = pipeline_result.first->second;
     auto result = pipeline.receive_datagram(event.bytes);
     for (const auto& packet : result.outbound) {
       client_transport_.send(event.session, packet);
@@ -265,6 +272,7 @@ class LiveWorldService {
   ZoneHandoff& zone_handoff_;
   WorldServer core_;
   eq2::net::TcpSocketServer client_transport_;
+  eq2::net::TcpSocketClient login_client_;
 
   mutable std::mutex mutex_;
   std::unordered_map<std::uint64_t, eq2::protocol::StreamPipeline> pipelines_;

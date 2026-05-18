@@ -7,6 +7,7 @@
 #include <eq2/login/live_login.h>
 #include <eq2/protocol/login_world.h>
 #include <eq2/protocol/opcode_version.h>
+#include <eq2/protocol/packet_header.h>
 #include <eq2/world/live_world.h>
 #include <eq2/world/zone_handoff_adapter.h>
 
@@ -231,6 +232,7 @@ void apply_environment_config(eq2::core::MapConfig& config) {
   apply_env(config, "EQ2_WORLD_PROTOCOL_VERSION", "world.protocol_version");
   apply_env(config, "EQ2_WORLD_SERVER_VERSION", "world.server_version");
   apply_env(config, "EQ2_WORLD_DATABASE_VERSION", "world.database_version");
+  apply_env(config, "EQ2_WORLD_OPCODE_WIDTH", "world.opcode_width");
   apply_env(config, "EQ2_LOGIN_ADDRESS", "login.remote_address");
   apply_env(config, "EQ2_LOGIN_PORT", "login.remote_port");
 
@@ -275,6 +277,7 @@ void print_help() {
       << "  --world-protocol-version <version> World protocol version string.\n"
       << "  --world-server-version <version> World server version allowed by login.\n"
       << "  --world-database-version <version> World DB version advertised to login.\n"
+      << "  --world-opcode-width <1|2|packed> Client application opcode width.\n"
       << "  --login-address <address>   Login server address used by world registration.\n"
       << "  --login-port <port>         Login server port used by world registration.\n"
       << "  --db-host <host>            MariaDB world DB host.\n"
@@ -289,7 +292,7 @@ void print_help() {
       << "  EQ2_WORLD_ADDRESS, EQ2_WORLD_PORT, EQ2_WORLD_ADVERTISED_ADDRESS,\n"
       << "  EQ2_WORLD_NAME, EQ2_WORLD_ACCOUNT, EQ2_WORLD_PASSWORD,\n"
       << "  EQ2_WORLD_PROTOCOL_VERSION, EQ2_WORLD_SERVER_VERSION,\n"
-      << "  EQ2_WORLD_DATABASE_VERSION,\n"
+      << "  EQ2_WORLD_DATABASE_VERSION, EQ2_WORLD_OPCODE_WIDTH,\n"
       << "  EQ2_LOGIN_ADDRESS, EQ2_LOGIN_PORT,\n"
       << "  EQ2_DB_HOST, EQ2_DB_PORT, EQ2_WORLD_DB_NAME, EQ2_DB_NAME,\n"
       << "  EQ2_DB_USER, EQ2_DB_PASSWORD, EQ2_DB_TLS.\n";
@@ -400,6 +403,16 @@ auto parse_arguments(int argc, char** argv) -> eq2::core::Result<AppOptions> {
         return eq2::core::Result<AppOptions>::failure({.message = "--world-database-version requires an integer"});
       }
       add_key_value_override(options, "world.database_version", std::move(*value));
+    } else if (arg == "--world-opcode-width") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--world-opcode-width requires a value"});
+      }
+      if (!eq2::protocol::parse_application_opcode_width(*value).has_value()) {
+        return eq2::core::Result<AppOptions>::failure({
+            .message = "--world-opcode-width must be 1, 2, packed, one_byte, two_bytes, or packed_u16"});
+      }
+      add_key_value_override(options, "world.opcode_width", std::move(*value));
     } else if (arg == "--login-address") {
       auto value = require_value(arg);
       if (!value) {
@@ -497,6 +510,17 @@ auto validate_world_registration_config(const eq2::world::WorldServerConfig& con
   return std::nullopt;
 }
 
+auto validate_world_client_protocol_config(const eq2::core::ConfigProvider& config)
+    -> std::optional<std::string> {
+  const auto value = config.get("world.opcode_width").value_or(
+      config.get("world.application_opcode_width").value_or(""));
+  if (!value.empty() && !eq2::protocol::parse_application_opcode_width(value).has_value()) {
+    return "world client opcode width must be 1, 2, packed, one_byte, two_bytes, or packed_u16";
+  }
+
+  return std::nullopt;
+}
+
 auto load_world_database_config(const eq2::core::ConfigProvider& config)
     -> eq2::db::DatabaseConfig {
   return eq2::db::DatabaseConfig{
@@ -562,6 +586,10 @@ auto run_server(const eq2::core::ConfigProvider& config, const AppOptions& optio
 
   auto world_config = eq2::world::load_world_server_config(config);
   if (auto error = validate_world_registration_config(world_config)) {
+    std::cerr << *error << '\n';
+    return EXIT_FAILURE;
+  }
+  if (auto error = validate_world_client_protocol_config(config)) {
     std::cerr << *error << '\n';
     return EXIT_FAILURE;
   }
@@ -634,6 +662,11 @@ auto run_config_validation(const eq2::core::ConfigProvider& config) -> int {
   auto runtime = eq2::core::load_runtime_config(config);
   if (!runtime.has_value()) {
     std::cerr << runtime.error().message << '\n';
+    return EXIT_FAILURE;
+  }
+
+  if (auto error = validate_world_client_protocol_config(config)) {
+    std::cerr << *error << '\n';
     return EXIT_FAILURE;
   }
 

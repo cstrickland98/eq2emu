@@ -16,6 +16,8 @@ password = change-me
 protocol_version = 0.5.0
 server_version = source2
 database_version = 0
+; 2006 clients use the packed VeType application message-id prefix.
+opcode_width = packed
 
 [login]
 remote_address = 127.0.0.1

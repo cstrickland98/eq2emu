@@ -3,8 +3,10 @@
 #include <eq2/db/query.h>
 #include <eq2/db/sql_repositories.h>
 #include <eq2/login/live_login.h>
+#include <eq2/protocol/application_packet.h>
 #include <eq2/protocol/interserver_packet.h>
 #include <eq2/protocol/login_world.h>
+#include <eq2/protocol/packet_buffer.h>
 #include <eq2/protocol/play_character.h>
 #include <eq2/protocol/protocol_packet.h>
 #include <eq2/protocol/session.h>
@@ -12,6 +14,7 @@
 #include <eq2/world/session.h>
 #include <eq2/world/zone_handoff_adapter.h>
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -186,6 +189,21 @@ auto wait_for_world_event(const eq2::world::LiveWorldService& world,
   return false;
 }
 
+auto wait_for_world_app_opcode(const eq2::world::LiveWorldService& world,
+                               std::uint16_t opcode) -> bool {
+  for (auto attempt = 0; attempt < 80; ++attempt) {
+    const auto events = world.events();
+    for (const auto& event : events) {
+      if (event.type == eq2::world::LiveWorldEventType::app_packet &&
+          event.application_opcode == opcode) {
+        return true;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  }
+  return false;
+}
+
 void world_config_loads_source2_runtime_settings() {
   eq2::core::MapConfig values;
   values.set("world.address", "127.0.0.1");
@@ -197,6 +215,7 @@ void world_config_loads_source2_runtime_settings() {
   values.set("world.account", "world-account");
   values.set("world.password", "secret");
   values.set("world.server_version", "2026.05.14");
+  values.set("world.opcode_width", "packed");
 
   const auto config = eq2::world::load_world_server_config(values);
 
@@ -207,6 +226,8 @@ void world_config_loads_source2_runtime_settings() {
   require_eq(config.login_address, std::string_view("127.0.0.2"), "world config reads login address");
   require_eq(config.login_port, static_cast<std::uint16_t>(9102), "world config reads login port");
   require_eq(config.world_name, std::string_view("Public World"), "world config reads world name");
+  require_eq(config.client_opcode_width, eq2::protocol::ApplicationOpcodeWidth::packed_u16,
+             "world config reads client opcode width");
 }
 
 void world_config_keeps_legacy_login_address_keys_as_fallback() {
@@ -347,6 +368,9 @@ void live_world_registers_with_login_loads_characters_and_requests_zone_handoff(
   require(world.register_with_login(), "live world sends LSInfo to live source2 login over TCP");
   require(wait_for_world_registration(login, 1),
           "live source2 login receives world registration over real transport");
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  require_eq(login.diagnostic_counters().registered_worlds, static_cast<std::size_t>(1),
+             "live world keeps the login registration TCP session open");
   const auto registrations = login.world_registration_results();
   require_eq(registrations.front().status, eq2::login::WorldRegistrationStatus::accepted,
              "live source2 login accepts SQL-backed world registration");
@@ -444,6 +468,60 @@ void live_world_registers_with_login_loads_characters_and_requests_zone_handoff(
   login.stop();
 }
 
+void live_world_decodes_packed_client_app_opcodes_by_default() {
+  auto character_connection = std::make_shared<CharacterListConnection>();
+  eq2::db::SqlCharacterListRepository characters(character_connection);
+  CapturingZoneHandoff zone_handoff;
+  eq2::world::LiveWorldService world(
+      eq2::world::WorldServerConfig{
+          .address = "127.0.0.1",
+          .port = 0,
+      },
+      characters,
+      zone_handoff);
+
+  require(world.start(), "live world starts for packed client opcode smoke");
+
+  eq2::net::TcpSocketClient client;
+  require(client.connect_to(eq2::net::SocketEndpoint{
+              .address = "127.0.0.1",
+              .port = world.port(),
+          }),
+          "packed client opcode smoke connects to live world");
+
+  const auto session_request = eq2::protocol::encode_session_request(eq2::protocol::SessionRequest{
+      .unknown_a = 0,
+      .session = 0x01020304,
+      .max_length = 512,
+  });
+  const auto session_packet = eq2::protocol::encode_protocol_packet(
+      eq2::protocol::kOpSessionRequest, session_request);
+  require(client.send(session_packet), "packed client opcode smoke sends session request");
+  const auto session_response = client.receive();
+  require(session_response.has_value(), "packed client opcode smoke receives session response");
+
+  const auto app = eq2::protocol::encode_application_packet(
+      0x019a, std::array<std::uint8_t, 1>{0x5a},
+      eq2::protocol::ApplicationOpcodeWidth::packed_u16);
+  eq2::protocol::PacketWriter sequenced_writer;
+  sequenced_writer.append_u16_be(0);
+  sequenced_writer.append_bytes(app);
+  const auto app_datagram = eq2::protocol::encode_protocol_packet(
+      eq2::protocol::kOpPacket, sequenced_writer.bytes());
+  require(client.send(app_datagram), "packed client opcode smoke sends packed app packet");
+  const auto ack = client.receive();
+  require(ack.has_value(), "packed client opcode smoke receives ACK");
+  if (ack.has_value()) {
+    const auto decoded_ack = eq2::protocol::decode_protocol_packet(*ack);
+    require(decoded_ack.has_value() && decoded_ack->opcode == eq2::protocol::kOpAck,
+            "packed client opcode smoke ACK decodes");
+  }
+  require(wait_for_world_app_opcode(world, 0x019a),
+          "live world decodes packed client app opcodes by default");
+
+  world.stop();
+}
+
 void live_world_registration_uses_configured_login_address() {
   auto login_connection = std::make_shared<LoginRegistrationConnection>();
   eq2::db::SqlLoginAccountRepository login_accounts(login_connection);
@@ -522,6 +600,7 @@ int main() {
   character_list_and_select_match_known_account_rows();
   zone_handoff_uses_interface_without_zone_internals();
   live_world_registers_with_login_loads_characters_and_requests_zone_handoff();
+  live_world_decodes_packed_client_app_opcodes_by_default();
   live_world_registration_uses_configured_login_address();
   world_zone_handoff_admits_selected_character_to_db_bootstrapped_zone_runtime();
 

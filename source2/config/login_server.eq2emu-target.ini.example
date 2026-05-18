@@ -7,7 +7,7 @@ port = 9100
 client_version = 546
 account_creation_allowed = false
 opcode_source = database
-opcode_width = 1
+opcode_width = packed
 
 [db]
 host = 192.168.1.243

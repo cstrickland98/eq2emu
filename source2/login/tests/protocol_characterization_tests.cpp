@@ -63,7 +63,7 @@ void session_response_round_trips_legacy_wire_order() {
       .format = eq2::protocol::session_response_format(true, false),
       .unknown_b = 0,
       .max_length = 512,
-      .unknown_d = 0,
+      .unknown_d = 2,
   };
 
   const auto bytes = eq2::protocol::encode_session_response(response);
@@ -74,7 +74,7 @@ void session_response_round_trips_legacy_wire_order() {
       0x01,
       0x00,
       0x00, 0x00, 0x02, 0x00,
-      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x02,
   };
 
   require(bytes == expected, "session response uses legacy big-endian fields and packed size");

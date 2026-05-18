@@ -53,14 +53,16 @@ inline auto parse_modern_play_character_request(std::span<const std::uint8_t> by
 
   auto character_id = read_i32_le(reader);
   auto server_id = read_i32_le(reader);
-  auto unknown = reader.read_bytes(3);
-  if (!character_id || !server_id || !unknown) {
+  auto unknown = reader.read_u8();
+  auto character_name = read_eq2_16bit_string(reader);
+  if (!character_id || !server_id || !unknown || !character_name) {
     return std::nullopt;
   }
 
   return PlayCharacterRequest{
       .character_id = *character_id,
       .server_id = *server_id,
+      .character_name = std::move(*character_name),
   };
 }
 
@@ -88,8 +90,7 @@ inline auto encode_modern_play_character_request_fixture(const PlayCharacterRequ
   append_i32_le(writer, request.character_id);
   append_i32_le(writer, request.server_id);
   writer.append_u8(0);
-  writer.append_u8(0);
-  writer.append_u8(0);
+  append_eq2_16bit_string(writer, request.character_name);
   return std::move(writer).into_bytes();
 }
 
@@ -98,6 +99,9 @@ inline auto encode_play_character_response_payload(const PlayCharacterResponse& 
     -> std::vector<std::uint8_t> {
   PacketWriter writer;
   writer.append_u8(response.response);
+  if (response.response != 1) {
+    return std::move(writer).into_bytes();
+  }
 
   if (client_version >= kPlayCharacterResponseExpandedUnknownsVersion) {
     writer.append_u16_le(0);
@@ -121,6 +125,11 @@ inline auto decode_play_character_response_payload(std::span<const std::uint8_t>
   auto response = reader.read_u8();
   if (!response.has_value()) {
     return std::nullopt;
+  }
+  if (*response != 1) {
+    return PlayCharacterResponse{
+        .response = *response,
+    };
   }
 
   if (client_version >= kPlayCharacterResponseExpandedUnknownsVersion) {

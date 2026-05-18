@@ -38,6 +38,7 @@ struct SessionEvent {
   SessionId session;
   TransportKind transport = TransportKind::tcp;
   std::vector<std::uint8_t> bytes;
+  std::string remote_address;
   std::string reason;
 };
 

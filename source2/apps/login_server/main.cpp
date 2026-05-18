@@ -7,6 +7,8 @@
 #include <eq2/login/authentication.h>
 #include <eq2/login/live_login.h>
 #include <eq2/protocol/application_packet.h>
+#include <eq2/protocol/combined_packet.h>
+#include <eq2/protocol/crc.h>
 #include <eq2/protocol/login_request.h>
 #include <eq2/protocol/login_response.h>
 #include <eq2/protocol/opcode_version.h>
@@ -18,6 +20,7 @@
 #include <charconv>
 #include <chrono>
 #include <csignal>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
@@ -54,6 +57,7 @@ struct AppOptions {
   std::uint16_t client_version = 546;
   std::optional<std::uint32_t> expected_world_count;
   std::optional<std::uint32_t> run_for_ms;
+  bool diagnostic_events = false;
 };
 
 std::atomic_bool stop_requested = false;
@@ -146,7 +150,19 @@ void apply_environment_config(eq2::core::MapConfig& config) {
   apply_env(config, "EQ2_LOGIN_ALL_WORLDS_REQUEST_OPCODE", "login.all_worlds_request_opcode");
   apply_env(config, "EQ2_LOGIN_CHARACTERS_REQUEST_OPCODE", "login.characters_request_opcode");
   apply_env(config, "EQ2_LOGIN_CHARACTERS_REPLY_OPCODE", "login.characters_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_CREATE_CHARACTER_REQUEST_OPCODE", "login.create_character_request_opcode");
+  apply_env(config, "EQ2_LOGIN_CREATE_CHARACTER_REPLY_OPCODE", "login.create_character_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_DELETE_CHARACTER_REQUEST_OPCODE", "login.delete_character_request_opcode");
+  apply_env(config, "EQ2_LOGIN_DELETE_CHARACTER_REPLY_OPCODE", "login.delete_character_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_PLAY_CHARACTER_REQUEST_OPCODE", "login.play_character_request_opcode");
+  apply_env(config, "EQ2_LOGIN_PLAY_CHARACTER_REPLY_OPCODE", "login.play_character_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_CLIENT_CRASHLOG_REPLY_OPCODE", "login.client_crashlog_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_CLIENT_EQ2_CRASHLOG_REPLY_OPCODE", "login.client_eq2_crashlog_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_CLIENT_VERIFYLOG_REPLY_OPCODE", "login.client_verifylog_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_CLIENT_ALERTLOG_REPLY_OPCODE", "login.client_alertlog_reply_opcode");
+  apply_env(config, "EQ2_LOGIN_CLIENT_BASELOG_REPLY_OPCODE", "login.client_baselog_reply_opcode");
   apply_env(config, "EQ2_LOGIN_KEY_REQUEST_OPCODE", "login.key_request_opcode");
+  apply_env(config, "EQ2_LOGIN_DIAGNOSTIC_EVENTS", "login.diagnostic_events");
 
   apply_env(config, "EQ2_DB_HOST", "db.host");
   apply_env(config, "EQ2_DB_PORT", "db.port");
@@ -187,13 +203,24 @@ void print_help() {
       << "  --client-version <version>  Login client version/opcode range, default 546.\n"
       << "  --account-creation <bool>   Enable login account creation.\n"
       << "  --login-opcode-source <database|config> Source login app opcodes.\n"
-      << "  --login-opcode-width <1|2>  Login application opcode width.\n"
+      << "  --login-opcode-width <1|2|packed> Login application opcode width.\n"
       << "  --login-request-opcode <n>  OP_LoginRequestMsg EQ opcode, decimal or 0x hex.\n"
       << "  --login-reply-opcode <n>    OP_LoginReplyMsg EQ opcode, decimal or 0x hex.\n"
       << "  --login-world-list-opcode <n> OP_WorldListMsg EQ opcode, decimal or 0x hex.\n"
       << "  --login-all-worlds-request-opcode <n> OP_AllWSDescRequestMsg EQ opcode.\n"
       << "  --login-characters-request-opcode <n> OP_AllCharactersDescRequestMsg EQ opcode.\n"
       << "  --login-characters-reply-opcode <n> OP_AllCharactersDescReplyMsg EQ opcode.\n"
+      << "  --login-create-character-request-opcode <n> OP_CreateCharacterRequestMsg EQ opcode.\n"
+      << "  --login-create-character-reply-opcode <n> OP_CreateCharacterReplyMsg EQ opcode.\n"
+      << "  --login-delete-character-request-opcode <n> OP_DeleteCharacterRequestMsg EQ opcode.\n"
+      << "  --login-delete-character-reply-opcode <n> OP_DeleteCharacterReplyMsg EQ opcode.\n"
+      << "  --login-play-character-request-opcode <n> OP_PlayCharacterRequestMsg EQ opcode.\n"
+      << "  --login-play-character-reply-opcode <n> OP_PlayCharacterReplyMsg EQ opcode.\n"
+      << "  --login-client-crashlog-reply-opcode <n> OP_LsClientCrashlogReplyMsg EQ opcode.\n"
+      << "  --login-client-eq2-crashlog-reply-opcode <n> OP_LsClientEq2CrashLogReplyMsg EQ opcode.\n"
+      << "  --login-client-verifylog-reply-opcode <n> OP_LsClientVerifylogReplyMsg EQ opcode.\n"
+      << "  --login-client-alertlog-reply-opcode <n> OP_LsClientAlertlogReplyMsg EQ opcode.\n"
+      << "  --login-client-baselog-reply-opcode <n> OP_LsClientBaselogReplyMsg EQ opcode.\n"
       << "  --login-key-request-opcode <n> OP_WSLoginRequestMsg EQ opcode.\n"
       << "  --db-host <host>            MariaDB host.\n"
       << "  --db-port <port>            MariaDB port.\n"
@@ -211,6 +238,7 @@ void print_help() {
       << "  --connect-port <port>       Port used by --probe-login.\n"
       << "  --expect-world-count <n>    Require the world-list reply to contain n worlds.\n"
       << "  --run-for-ms <ms>           Stop --serve automatically after this many milliseconds.\n"
+      << "  --diagnostic-events         Print redacted live login event summaries while serving.\n"
       << "\n"
       << "Environment aliases:\n"
       << "  EQ2_LOGIN_ADDRESS, EQ2_LOGIN_PORT, EQ2_LOGIN_ACCOUNT_CREATION_ALLOWED,\n"
@@ -218,8 +246,15 @@ void print_help() {
       << "  EQ2_LOGIN_REQUEST_OPCODE,\n"
       << "  EQ2_LOGIN_REPLY_OPCODE, EQ2_LOGIN_WORLD_LIST_OPCODE,\n"
       << "  EQ2_LOGIN_ALL_WORLDS_REQUEST_OPCODE, EQ2_LOGIN_CHARACTERS_REQUEST_OPCODE,\n"
-      << "  EQ2_LOGIN_CHARACTERS_REPLY_OPCODE, EQ2_LOGIN_KEY_REQUEST_OPCODE,\n"
+      << "  EQ2_LOGIN_CHARACTERS_REPLY_OPCODE, EQ2_LOGIN_CREATE_CHARACTER_REQUEST_OPCODE,\n"
+      << "  EQ2_LOGIN_CREATE_CHARACTER_REPLY_OPCODE, EQ2_LOGIN_DELETE_CHARACTER_REQUEST_OPCODE,\n"
+      << "  EQ2_LOGIN_DELETE_CHARACTER_REPLY_OPCODE, EQ2_LOGIN_PLAY_CHARACTER_REQUEST_OPCODE,\n"
+      << "  EQ2_LOGIN_PLAY_CHARACTER_REPLY_OPCODE, EQ2_LOGIN_CLIENT_CRASHLOG_REPLY_OPCODE,\n"
+      << "  EQ2_LOGIN_CLIENT_EQ2_CRASHLOG_REPLY_OPCODE,\n"
+      << "  EQ2_LOGIN_CLIENT_VERIFYLOG_REPLY_OPCODE, EQ2_LOGIN_CLIENT_ALERTLOG_REPLY_OPCODE,\n"
+      << "  EQ2_LOGIN_CLIENT_BASELOG_REPLY_OPCODE, EQ2_LOGIN_KEY_REQUEST_OPCODE,\n"
       << "  EQ2_LOGIN_USERNAME, EQ2_LOGIN_PASSWORD,\n"
+      << "  EQ2_LOGIN_DIAGNOSTIC_EVENTS,\n"
       << "  EQ2_DB_HOST, EQ2_DB_PORT, EQ2_LOGIN_DB_NAME, EQ2_DB_NAME,\n"
       << "  EQ2_DB_USER, EQ2_DB_PASSWORD, EQ2_DB_TLS.\n";
 }
@@ -360,6 +395,72 @@ auto parse_arguments(int argc, char** argv) -> eq2::core::Result<AppOptions> {
         return eq2::core::Result<AppOptions>::failure({.message = "--login-characters-reply-opcode requires a value"});
       }
       add_key_value_override(options, "login.characters_reply_opcode", std::move(*value));
+    } else if (arg == "--login-create-character-request-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-create-character-request-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.create_character_request_opcode", std::move(*value));
+    } else if (arg == "--login-create-character-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-create-character-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.create_character_reply_opcode", std::move(*value));
+    } else if (arg == "--login-delete-character-request-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-delete-character-request-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.delete_character_request_opcode", std::move(*value));
+    } else if (arg == "--login-delete-character-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-delete-character-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.delete_character_reply_opcode", std::move(*value));
+    } else if (arg == "--login-play-character-request-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-play-character-request-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.play_character_request_opcode", std::move(*value));
+    } else if (arg == "--login-play-character-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-play-character-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.play_character_reply_opcode", std::move(*value));
+    } else if (arg == "--login-client-crashlog-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-client-crashlog-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.client_crashlog_reply_opcode", std::move(*value));
+    } else if (arg == "--login-client-eq2-crashlog-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-client-eq2-crashlog-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.client_eq2_crashlog_reply_opcode", std::move(*value));
+    } else if (arg == "--login-client-verifylog-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-client-verifylog-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.client_verifylog_reply_opcode", std::move(*value));
+    } else if (arg == "--login-client-alertlog-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-client-alertlog-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.client_alertlog_reply_opcode", std::move(*value));
+    } else if (arg == "--login-client-baselog-reply-opcode") {
+      auto value = require_value(arg);
+      if (!value) {
+        return eq2::core::Result<AppOptions>::failure({.message = "--login-client-baselog-reply-opcode requires a value"});
+      }
+      add_key_value_override(options, "login.client_baselog_reply_opcode", std::move(*value));
     } else if (arg == "--login-key-request-opcode") {
       auto value = require_value(arg);
       if (!value) {
@@ -448,6 +549,8 @@ auto parse_arguments(int argc, char** argv) -> eq2::core::Result<AppOptions> {
         return eq2::core::Result<AppOptions>::failure({.message = "--run-for-ms requires an integer"});
       }
       options.run_for_ms = *parsed;
+    } else if (arg == "--diagnostic-events") {
+      options.diagnostic_events = true;
     } else {
       return eq2::core::Result<AppOptions>::failure(eq2::core::Error{
           .code = eq2::core::ErrorCode::invalid_argument,
@@ -486,6 +589,17 @@ auto apply_configured_app_options(AppOptions& options,
       });
     }
     options.client_version = *parsed;
+  }
+
+  if (auto value = config.get("login.diagnostic_events")) {
+    auto parsed = parse_bool(*value);
+    if (!parsed.has_value()) {
+      return eq2::core::Result<void>::failure(eq2::core::Error{
+          .code = eq2::core::ErrorCode::invalid_argument,
+          .message = "login.diagnostic_events must be a boolean",
+      });
+    }
+    options.diagnostic_events = *parsed;
   }
 
   return eq2::core::Result<void>::success();
@@ -556,16 +670,7 @@ auto load_database_config(const eq2::core::ConfigProvider& config) -> eq2::db::D
 
 auto parse_opcode_width(std::string_view value)
     -> std::optional<eq2::protocol::ApplicationOpcodeWidth> {
-  if (value == "1" || value == "one" || value == "one_byte" || value == "one-byte" ||
-      value == "login_stream") {
-    return eq2::protocol::ApplicationOpcodeWidth::one_byte;
-  }
-  if (value == "2" || value == "two" || value == "two_byte" || value == "two-byte" ||
-      value == "two_bytes" || value == "world_stream") {
-    return eq2::protocol::ApplicationOpcodeWidth::two_bytes;
-  }
-
-  return std::nullopt;
+  return eq2::protocol::parse_application_opcode_width(value);
 }
 
 auto config_first(const eq2::core::ConfigProvider& config,
@@ -585,6 +690,17 @@ auto validate_live_login_options(const eq2::login::LiveLoginOptions& options)
       (options.login_request_opcode > 0xffU || options.login_reply_opcode > 0xffU ||
        options.world_list_reply_opcode > 0xffU || options.all_worlds_request_opcode > 0xffU ||
        options.characters_request_opcode > 0xffU || options.characters_reply_opcode > 0xffU ||
+       options.create_character_request_opcode > 0xffU ||
+       options.create_character_reply_opcode > 0xffU ||
+       options.delete_character_request_opcode > 0xffU ||
+       options.delete_character_reply_opcode > 0xffU ||
+       options.play_character_request_opcode > 0xffU ||
+       options.play_character_reply_opcode > 0xffU ||
+       options.client_crashlog_reply_opcode > 0xffU ||
+       options.client_eq2_crashlog_reply_opcode > 0xffU ||
+       options.client_verifylog_reply_opcode > 0xffU ||
+       options.client_alertlog_reply_opcode > 0xffU ||
+       options.client_baselog_reply_opcode > 0xffU ||
        options.key_request_opcode > 0xffU)) {
     return "one-byte login opcode width requires all configured login opcodes to be <= 255";
   }
@@ -602,7 +718,7 @@ auto load_live_login_options(const eq2::core::ConfigProvider& config,
     if (!parsed.has_value()) {
       return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(eq2::core::Error{
           .code = eq2::core::ErrorCode::invalid_argument,
-          .message = "login opcode width must be 1, 2, one_byte, or two_bytes",
+          .message = "login opcode width must be 1, 2, packed, one_byte, two_bytes, or packed_u16",
       });
     }
     options.opcode_width = *parsed;
@@ -652,6 +768,50 @@ auto load_live_login_options(const eq2::core::ConfigProvider& config,
   auto key_request = read_opcode({"login.key_request_opcode", "login.ws_login_request_opcode"},
                                  "login key request opcode",
                                  options.key_request_opcode);
+  auto create_character_request = read_opcode(
+      {"login.create_character_request_opcode", "login.create_request_opcode"},
+      "login create-character request opcode",
+      options.create_character_request_opcode);
+  auto create_character_reply = read_opcode(
+      {"login.create_character_reply_opcode", "login.create_reply_opcode"},
+      "login create-character reply opcode",
+      options.create_character_reply_opcode);
+  auto delete_character_request = read_opcode(
+      {"login.delete_character_request_opcode", "login.delete_request_opcode"},
+      "login delete-character request opcode",
+      options.delete_character_request_opcode);
+  auto delete_character_reply = read_opcode(
+      {"login.delete_character_reply_opcode", "login.delete_reply_opcode"},
+      "login delete-character reply opcode",
+      options.delete_character_reply_opcode);
+  auto play_character_request = read_opcode(
+      {"login.play_character_request_opcode", "login.play_request_opcode"},
+      "login play-character request opcode",
+      options.play_character_request_opcode);
+  auto play_character_reply = read_opcode(
+      {"login.play_character_reply_opcode", "login.play_reply_opcode"},
+      "login play-character reply opcode",
+      options.play_character_reply_opcode);
+  auto client_crashlog_reply = read_opcode(
+      {"login.client_crashlog_reply_opcode", "login.crashlog_reply_opcode"},
+      "login client crashlog reply opcode",
+      options.client_crashlog_reply_opcode);
+  auto client_eq2_crashlog_reply = read_opcode(
+      {"login.client_eq2_crashlog_reply_opcode", "login.eq2_crashlog_reply_opcode"},
+      "login client eq2 crashlog reply opcode",
+      options.client_eq2_crashlog_reply_opcode);
+  auto client_verifylog_reply = read_opcode(
+      {"login.client_verifylog_reply_opcode", "login.verifylog_reply_opcode"},
+      "login client verifylog reply opcode",
+      options.client_verifylog_reply_opcode);
+  auto client_alertlog_reply = read_opcode(
+      {"login.client_alertlog_reply_opcode", "login.alertlog_reply_opcode"},
+      "login client alertlog reply opcode",
+      options.client_alertlog_reply_opcode);
+  auto client_baselog_reply = read_opcode(
+      {"login.client_baselog_reply_opcode", "login.baselog_reply_opcode"},
+      "login client baselog reply opcode",
+      options.client_baselog_reply_opcode);
   if (!request.has_value()) {
     return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(request.error());
   }
@@ -673,6 +833,39 @@ auto load_live_login_options(const eq2::core::ConfigProvider& config,
   if (!key_request.has_value()) {
     return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(key_request.error());
   }
+  if (!create_character_request.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(create_character_request.error());
+  }
+  if (!create_character_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(create_character_reply.error());
+  }
+  if (!delete_character_request.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(delete_character_request.error());
+  }
+  if (!delete_character_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(delete_character_reply.error());
+  }
+  if (!play_character_request.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(play_character_request.error());
+  }
+  if (!play_character_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(play_character_reply.error());
+  }
+  if (!client_crashlog_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(client_crashlog_reply.error());
+  }
+  if (!client_eq2_crashlog_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(client_eq2_crashlog_reply.error());
+  }
+  if (!client_verifylog_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(client_verifylog_reply.error());
+  }
+  if (!client_alertlog_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(client_alertlog_reply.error());
+  }
+  if (!client_baselog_reply.has_value()) {
+    return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(client_baselog_reply.error());
+  }
 
   options.login_request_opcode = request.value();
   options.login_reply_opcode = reply.value();
@@ -680,6 +873,17 @@ auto load_live_login_options(const eq2::core::ConfigProvider& config,
   options.all_worlds_request_opcode = all_worlds_request.value();
   options.characters_request_opcode = characters_request.value();
   options.characters_reply_opcode = characters_reply.value();
+  options.create_character_request_opcode = create_character_request.value();
+  options.create_character_reply_opcode = create_character_reply.value();
+  options.delete_character_request_opcode = delete_character_request.value();
+  options.delete_character_reply_opcode = delete_character_reply.value();
+  options.play_character_request_opcode = play_character_request.value();
+  options.play_character_reply_opcode = play_character_reply.value();
+  options.client_crashlog_reply_opcode = client_crashlog_reply.value();
+  options.client_eq2_crashlog_reply_opcode = client_eq2_crashlog_reply.value();
+  options.client_verifylog_reply_opcode = client_verifylog_reply.value();
+  options.client_alertlog_reply_opcode = client_alertlog_reply.value();
+  options.client_baselog_reply_opcode = client_baselog_reply.value();
   options.key_request_opcode = key_request.value();
 
   if (validate_opcode_range) {
@@ -742,6 +946,18 @@ auto load_live_login_options_from_database(const eq2::core::ConfigProvider& conf
   live_options.all_worlds_request_opcode = opcodes.value().all_worlds_request_opcode;
   live_options.characters_request_opcode = opcodes.value().characters_request_opcode;
   live_options.characters_reply_opcode = opcodes.value().characters_reply_opcode;
+  live_options.create_character_request_opcode = opcodes.value().create_character_request_opcode;
+  live_options.create_character_reply_opcode = opcodes.value().create_character_reply_opcode;
+  live_options.delete_character_request_opcode = opcodes.value().delete_character_request_opcode;
+  live_options.delete_character_reply_opcode = opcodes.value().delete_character_reply_opcode;
+  live_options.play_character_request_opcode = opcodes.value().play_character_request_opcode;
+  live_options.play_character_reply_opcode = opcodes.value().play_character_reply_opcode;
+  live_options.client_crashlog_reply_opcode = opcodes.value().client_crashlog_reply_opcode;
+  live_options.client_eq2_crashlog_reply_opcode =
+      opcodes.value().client_eq2_crashlog_reply_opcode;
+  live_options.client_verifylog_reply_opcode = opcodes.value().client_verifylog_reply_opcode;
+  live_options.client_alertlog_reply_opcode = opcodes.value().client_alertlog_reply_opcode;
+  live_options.client_baselog_reply_opcode = opcodes.value().client_baselog_reply_opcode;
   live_options.key_request_opcode = opcodes.value().key_request_opcode;
   if (auto error = validate_live_login_options(live_options)) {
     return eq2::core::Result<eq2::login::LiveLoginOptions>::failure(eq2::core::Error{
@@ -814,70 +1030,143 @@ auto make_all_worlds_request_frame(const eq2::login::LiveLoginOptions& live_opti
 auto decode_login_reply(std::span<const std::uint8_t> response,
                         const eq2::login::LiveLoginOptions& live_options)
     -> std::optional<eq2::protocol::LoginReplyPayload> {
+  const auto stripped =
+      eq2::protocol::strip_legacy_crc_if_present(response,
+                                                 eq2::protocol::kDefaultSessionKey);
   return eq2::protocol::decode_login_reply_protocol_frame(
-      response, live_options.login_reply_opcode, live_options.opcode_width);
+      stripped, live_options.login_reply_opcode, live_options.opcode_width);
+}
+
+auto split_protocol_response(std::span<const std::uint8_t> response)
+    -> std::vector<std::vector<std::uint8_t>> {
+  const auto stripped =
+      eq2::protocol::strip_legacy_crc_if_present(response,
+                                                 eq2::protocol::kDefaultSessionKey);
+  const auto protocol = eq2::protocol::decode_protocol_packet(stripped);
+  if (!protocol.has_value()) {
+    return {};
+  }
+
+  if (protocol->opcode != eq2::protocol::kOpCombined) {
+    return {std::vector<std::uint8_t>(stripped.begin(), stripped.end())};
+  }
+
+  const auto combined = eq2::protocol::decode_combined_packet(protocol->payload);
+  if (!combined.has_value()) {
+    return {};
+  }
+
+  std::vector<std::vector<std::uint8_t>> packets;
+  packets.reserve(combined->size());
+  for (const auto& subpacket : *combined) {
+    packets.emplace_back(subpacket.bytes.begin(), subpacket.bytes.end());
+  }
+  return packets;
+}
+
+template <typename DecodePayload>
+auto decode_application_response(std::span<const std::uint8_t> response,
+                                 std::uint16_t application_opcode,
+                                 DecodePayload decode_payload,
+                                 eq2::protocol::ApplicationOpcodeWidth opcode_width =
+                                     eq2::protocol::ApplicationOpcodeWidth::two_bytes)
+    -> decltype(decode_payload(std::span<const std::uint8_t>{})) {
+  const auto packets = split_protocol_response(response);
+  for (const auto& packet_bytes : packets) {
+    const auto protocol = eq2::protocol::decode_protocol_packet(packet_bytes);
+    if (!protocol.has_value() || protocol->opcode != eq2::protocol::kOpPacket) {
+      continue;
+    }
+
+    const auto decode_app =
+        [&](std::span<const std::uint8_t> payload)
+        -> decltype(decode_payload(std::span<const std::uint8_t>{})) {
+      const auto app = eq2::protocol::decode_application_packet(payload, opcode_width);
+      if (!app.has_value() || app->opcode != application_opcode) {
+        return std::nullopt;
+      }
+
+      return decode_payload(app->payload);
+    };
+
+    if (protocol->payload.size() >= 2) {
+      if (auto sequenced = decode_app(protocol->payload.subspan(2))) {
+        return sequenced;
+      }
+    }
+
+    if (auto unsequenced = decode_app(protocol->payload)) {
+      return unsequenced;
+    }
+  }
+
+  return std::nullopt;
 }
 
 auto decode_world_list_response(std::span<const std::uint8_t> response,
                                 const eq2::login::LiveLoginOptions& live_options)
     -> std::optional<eq2::protocol::LoginWorldListPayload> {
-  const auto protocol = eq2::protocol::decode_protocol_packet(response);
-  if (!protocol.has_value() || protocol->opcode != eq2::protocol::kOpPacket) {
-    return std::nullopt;
-  }
-
-  const auto decode_app =
-      [&live_options](std::span<const std::uint8_t> payload)
+  return decode_application_response(
+      response,
+      live_options.world_list_reply_opcode,
+      [](std::span<const std::uint8_t> payload)
       -> std::optional<eq2::protocol::LoginWorldListPayload> {
-    const auto app = eq2::protocol::decode_application_packet(payload, live_options.opcode_width);
-    if (!app.has_value() || app->opcode != live_options.world_list_reply_opcode) {
-      return std::nullopt;
-    }
-
-    return eq2::protocol::decode_login_world_list_payload(app->payload);
-  };
-
-  if (protocol->payload.size() >= 2) {
-    if (auto sequenced = decode_app(protocol->payload.subspan(2))) {
-      return sequenced;
-    }
-  }
-
-  return decode_app(protocol->payload);
+        return eq2::protocol::decode_login_world_list_payload(payload);
+      },
+      live_options.opcode_width);
 }
 
 auto decode_character_list_account_id(std::span<const std::uint8_t> response,
+                                      std::uint16_t client_version,
                                       const eq2::login::LiveLoginOptions& live_options)
     -> std::optional<std::uint32_t> {
-  const auto protocol = eq2::protocol::decode_protocol_packet(response);
-  if (!protocol.has_value() || protocol->opcode != eq2::protocol::kOpPacket) {
-    return std::nullopt;
-  }
+  return decode_application_response(
+      response,
+      live_options.characters_reply_opcode,
+      [client_version](std::span<const std::uint8_t> payload) -> std::optional<std::uint32_t> {
+        if (payload.size() < 5) {
+          return std::nullopt;
+        }
 
-  const auto decode_app =
-      [&live_options](std::span<const std::uint8_t> payload) -> std::optional<std::uint32_t> {
-    const auto app = eq2::protocol::decode_application_packet(payload, live_options.opcode_width);
-    if (!app.has_value() || app->opcode != live_options.characters_reply_opcode ||
-        app->payload.size() < 5) {
-      return std::nullopt;
-    }
+        eq2::protocol::PacketReader count_reader(payload);
+        const auto character_count = count_reader.read_u8();
+        if (!character_count.has_value()) {
+          return std::nullopt;
+        }
 
-    eq2::protocol::PacketReader reader(app->payload);
-    const auto character_count = reader.read_u8();
-    const auto account_id = reader.read_u32_le();
-    if (!character_count.has_value() || !account_id.has_value() || *character_count != 0) {
-      return std::nullopt;
-    }
-    return account_id;
-  };
+        if (*character_count == 0) {
+          const auto account_id = count_reader.read_u32_le();
+          return account_id;
+        }
 
-  if (protocol->payload.size() >= 2) {
-    if (auto sequenced = decode_app(protocol->payload.subspan(2))) {
-      return sequenced;
-    }
-  }
+        const auto trailer_size = client_version > 561 ? std::size_t{29} : std::size_t{15};
+        if (payload.size() < 1 + trailer_size) {
+          return 0U;
+        }
 
-  return decode_app(protocol->payload);
+        eq2::protocol::PacketReader trailer(payload.subspan(payload.size() - trailer_size));
+        const auto account_id = trailer.read_u32_le();
+        const auto unknown = trailer.read_u32_le();
+        const auto zero = trailer.read_u16_le();
+        const auto max_characters = trailer.read_u32_le();
+        const auto terminator = trailer.read_u8();
+        if (!account_id.has_value() || unknown.value_or(0) != 0xffffffffU ||
+            zero.value_or(1) != 0 || !max_characters.has_value() ||
+            *max_characters != (client_version <= 561 ? 7U : 10U) ||
+            terminator.value_or(1) != 0) {
+          return 0U;
+        }
+        return account_id;
+      },
+      live_options.opcode_width);
+}
+
+auto response_is_ack(std::span<const std::uint8_t> response) -> bool {
+  const auto stripped =
+      eq2::protocol::strip_legacy_crc_if_present(response,
+                                                 eq2::protocol::kDefaultSessionKey);
+  const auto protocol = eq2::protocol::decode_protocol_packet(stripped);
+  return protocol.has_value() && protocol->opcode == eq2::protocol::kOpAck;
 }
 
 struct LoginProbeExchange {
@@ -961,8 +1250,7 @@ auto exchange_login_sequence(eq2::net::SocketEndpoint endpoint,
       break;
     }
 
-    const auto response_protocol = eq2::protocol::decode_protocol_packet(*response);
-    if (response_protocol.has_value() && response_protocol->opcode == eq2::protocol::kOpAck) {
+    if (response_is_ack(*response)) {
       continue;
     }
 
@@ -970,15 +1258,14 @@ auto exchange_login_sequence(eq2::net::SocketEndpoint endpoint,
       if (auto world_list = decode_world_list_response(*response, live_options)) {
         exchange->world_list_received = true;
         exchange->world_count = world_list->worlds.size();
-        continue;
       }
     }
 
     if (!exchange->character_list_received) {
-      if (auto account_id = decode_character_list_account_id(*response, live_options)) {
+      if (auto account_id =
+              decode_character_list_account_id(*response, client_version, live_options)) {
         exchange->character_list_received = true;
         exchange->character_list_account_id = *account_id;
-        continue;
       }
     }
 
@@ -1241,6 +1528,18 @@ auto run_login_db_check(const eq2::core::ConfigProvider& config, const AppOption
               << " all_worlds_request_opcode=" << opcodes.value().all_worlds_request_opcode
               << " characters_request_opcode=" << opcodes.value().characters_request_opcode
               << " characters_reply_opcode=" << opcodes.value().characters_reply_opcode
+              << " create_character_request_opcode=" << opcodes.value().create_character_request_opcode
+              << " create_character_reply_opcode=" << opcodes.value().create_character_reply_opcode
+              << " delete_character_request_opcode=" << opcodes.value().delete_character_request_opcode
+              << " delete_character_reply_opcode=" << opcodes.value().delete_character_reply_opcode
+              << " play_character_request_opcode=" << opcodes.value().play_character_request_opcode
+              << " play_character_reply_opcode=" << opcodes.value().play_character_reply_opcode
+              << " client_crashlog_reply_opcode=" << opcodes.value().client_crashlog_reply_opcode
+              << " client_eq2_crashlog_reply_opcode="
+              << opcodes.value().client_eq2_crashlog_reply_opcode
+              << " client_verifylog_reply_opcode=" << opcodes.value().client_verifylog_reply_opcode
+              << " client_alertlog_reply_opcode=" << opcodes.value().client_alertlog_reply_opcode
+              << " client_baselog_reply_opcode=" << opcodes.value().client_baselog_reply_opcode
               << " key_request_opcode=" << opcodes.value().key_request_opcode;
     std::cout << '\n';
     return EXIT_SUCCESS;
@@ -1269,6 +1568,18 @@ auto run_login_db_check(const eq2::core::ConfigProvider& config, const AppOption
             << " all_worlds_request_opcode=" << opcodes.value().all_worlds_request_opcode
             << " characters_request_opcode=" << opcodes.value().characters_request_opcode
             << " characters_reply_opcode=" << opcodes.value().characters_reply_opcode
+            << " create_character_request_opcode=" << opcodes.value().create_character_request_opcode
+            << " create_character_reply_opcode=" << opcodes.value().create_character_reply_opcode
+            << " delete_character_request_opcode=" << opcodes.value().delete_character_request_opcode
+            << " delete_character_reply_opcode=" << opcodes.value().delete_character_reply_opcode
+            << " play_character_request_opcode=" << opcodes.value().play_character_request_opcode
+            << " play_character_reply_opcode=" << opcodes.value().play_character_reply_opcode
+            << " client_crashlog_reply_opcode=" << opcodes.value().client_crashlog_reply_opcode
+            << " client_eq2_crashlog_reply_opcode="
+            << opcodes.value().client_eq2_crashlog_reply_opcode
+            << " client_verifylog_reply_opcode=" << opcodes.value().client_verifylog_reply_opcode
+            << " client_alertlog_reply_opcode=" << opcodes.value().client_alertlog_reply_opcode
+            << " client_baselog_reply_opcode=" << opcodes.value().client_baselog_reply_opcode
             << " key_request_opcode=" << opcodes.value().key_request_opcode;
   std::cout << '\n';
 
@@ -1298,6 +1609,8 @@ auto run_mariadb_smoke(const eq2::core::ConfigProvider& config, const AppOptions
 
   eq2::db::SqlLoginAccountRepository accounts(connection);
   eq2::db::SqlWorldRegistrationRepository worlds(connection);
+  eq2::db::SqlCharacterListRepository characters(connection);
+  eq2::db::SqlClientLogRepository client_logs(connection);
   auto live_options = load_live_login_options_from_database(
       config, *connection, options.client_version);
   if (!live_options.has_value()) {
@@ -1314,6 +1627,8 @@ auto run_mariadb_smoke(const eq2::core::ConfigProvider& config, const AppOptions
       eq2::login::LoginServerConfig{.address = "127.0.0.1", .port = 0},
       accounts,
       worlds,
+      characters,
+      client_logs,
       supported_versions.value(),
       live_options.value());
 
@@ -1383,6 +1698,9 @@ auto run_server(const eq2::core::ConfigProvider& config, const AppOptions& optio
 
   eq2::db::SqlLoginAccountRepository accounts(connection);
   eq2::db::SqlWorldRegistrationRepository worlds(connection);
+  eq2::db::SqlCharacterListRepository characters(connection);
+  eq2::db::SqlClientLogRepository client_logs(connection);
+  eq2::db::SqlLoginMaintenanceRepository maintenance(connection);
   auto login_config = eq2::login::load_login_server_config(config);
   auto live_options = load_live_login_options_from_database(
       config, *connection, options.client_version);
@@ -1397,7 +1715,13 @@ auto run_server(const eq2::core::ConfigProvider& config, const AppOptions& optio
     return EXIT_FAILURE;
   }
   eq2::login::LiveLoginService service(
-      login_config, accounts, worlds, supported_versions.value(), live_options.value());
+      login_config,
+      accounts,
+      worlds,
+      characters,
+      client_logs,
+      supported_versions.value(),
+      live_options.value());
 
   if (!service.start()) {
     std::cerr << "failed to start source2 login server on "
@@ -1415,15 +1739,48 @@ auto run_server(const eq2::core::ConfigProvider& config, const AppOptions& optio
             << " version=" << eq2::core::kSource2Version << '\n';
 
   const auto start = std::chrono::steady_clock::now();
+  auto last_maintenance = start;
+  auto logged_event_count = std::size_t{0};
   while (!stop_requested.load()) {
+    const auto now = std::chrono::steady_clock::now();
     if (options.run_for_ms.has_value()) {
       const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start);
+          now - start);
       if (elapsed.count() >= *options.run_for_ms) {
         break;
       }
     }
+    if (now - last_maintenance >= std::chrono::minutes(5)) {
+      maintenance.remove_old_world_server_stats();
+      maintenance.remove_deleted_character_data();
+      maintenance.fix_bug_report_encoding();
+      last_maintenance = now;
+    }
+    if (options.diagnostic_events) {
+      const auto events = service.events();
+      for (; logged_event_count < events.size(); ++logged_event_count) {
+        eq2::core::log(log,
+                       eq2::core::LogLevel::info,
+                       "login.event",
+                       eq2::login::format_live_login_event(events[logged_event_count]));
+      }
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  if (options.diagnostic_events) {
+    const auto counters = service.diagnostic_counters();
+    eq2::core::log(log,
+                   eq2::core::LogLevel::info,
+                   "login.counters",
+                   "events=" + std::to_string(counters.events) +
+                       " active_client_sessions=" +
+                       std::to_string(counters.active_client_sessions) +
+                       " registered_worlds=" + std::to_string(counters.registered_worlds) +
+                       " login_attempts=" + std::to_string(counters.login_attempts) +
+                       " login_failures=" + std::to_string(counters.login_failures) +
+                       " malformed_packets=" + std::to_string(counters.malformed_packets) +
+                       " unsupported_packets=" + std::to_string(counters.unsupported_packets));
   }
 
   service.stop();

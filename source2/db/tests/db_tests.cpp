@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -163,6 +164,43 @@ void fake_repositories_cover_critical_login_world_character_and_zone_boundaries(
   };
   require_eq(characters.load_character_list(42).front().name, std::string_view("Alys"),
              "fake character repository returns character list rows");
+  require_eq(characters.save_world_zone_updates(
+                 77,
+                 {
+                     eq2::db::WorldZoneUpdateRecord{
+                         .zone_id = 12,
+                         .name = "qeynos",
+                         .description = "Qeynos",
+                     },
+                 }),
+             static_cast<std::size_t>(1),
+             "fake character repository stores world zone updates");
+  require_eq(characters.save_login_equipment_updates(
+                 77,
+                 {
+                     eq2::db::LoginEquipmentUpdateRecord{
+                         .update_id = 99,
+                         .world_character_id = 2002,
+                         .equip_type = 44,
+                         .red = 1,
+                         .green = 2,
+                         .blue = 3,
+                         .highlight_red = 4,
+                         .highlight_green = 5,
+                         .highlight_blue = 6,
+                         .slot = 7,
+                     },
+                 }),
+             static_cast<std::size_t>(1),
+             "fake character repository stores login equipment updates");
+  require_eq(characters.load_character_equipment(1001).front().equip_type, 44,
+             "fake character repository indexes saved equipment by login character");
+  const std::array<std::uint8_t, 3> picture{1, 2, 3};
+  require(characters.save_character_picture(42, 2002, 77, picture),
+          "fake character repository stores character pictures");
+  require_eq(characters.saved_character_pictures.front().picture.size(),
+             static_cast<std::size_t>(3),
+             "fake character repository preserves picture bytes");
 
   eq2::db::FakeZoneBootstrapRepository zones;
   zones.zones[10] = eq2::db::ZoneBootstrapRecord{
@@ -244,6 +282,148 @@ void sql_repositories_execute_expected_query_boundaries() {
              "SQL character repository maps zone id");
 
   connection->results.push_back(eq2::db::QueryResult{
+      .rows = {eq2::db::QueryRow{.columns = {{"appearance_id", "44"}}}},
+  });
+  connection->results.push_back(eq2::db::QueryResult{
+      .rows = {eq2::db::QueryRow{.columns = {{"appearance_id", "88"}}}},
+  });
+  connection->results.push_back(eq2::db::QueryResult{});
+  connection->results.push_back(eq2::db::QueryResult{
+      .rows = {eq2::db::QueryRow{.columns = {{"id", "501"}}}},
+  });
+  const auto create_request_index = connection->requests.size();
+  const auto saved = characters.save_created_character(eq2::db::CreatedCharacterRecord{
+      .account_id = 42,
+      .server_id = 77,
+      .character_id = 3003,
+      .name = "Newchar",
+      .race = 1,
+      .character_class = 4,
+      .gender = 2,
+      .deity = 3,
+      .level = 1,
+      .body_size = 0.75,
+      .body_age = 0.25,
+      .appearance_files =
+          eq2::db::CreatedCharacterAppearanceFiles{
+              .race_file = "model/human_male",
+              .hair_file = "hair/short",
+          },
+      .appearance_values =
+          {
+              eq2::db::CharacterAppearanceRecord{
+                  .type = "skin_color",
+                  .signed_value = true,
+                  .red = 25,
+                  .green = 50,
+                  .blue = 75,
+              },
+          },
+  });
+  require(saved, "SQL character repository saves created login character rows");
+  require(connection->requests[create_request_index].sql.find("select appearance_id") !=
+              std::string::npos,
+          "SQL character repository resolves hair appearance ids by name");
+  require(connection->requests[create_request_index + 1].sql.find("select appearance_id") !=
+              std::string::npos,
+          "SQL character repository resolves race appearance ids by name");
+  require(connection->requests[create_request_index + 2].sql.find("insert into login_characters") !=
+              std::string::npos,
+          "SQL character repository inserts the legacy login character row");
+  require_eq(connection->requests[create_request_index + 2].parameters[3],
+             std::string_view("Newchar"),
+             "SQL character repository parameterizes created character name");
+  require_eq(connection->requests[create_request_index + 2].parameters[8],
+             std::string_view("0.750000"),
+             "SQL character repository saves created body size");
+  require_eq(connection->requests[create_request_index + 2].parameters[18],
+             std::string_view("44"),
+             "SQL character repository stores resolved hair appearance id");
+  require_eq(connection->requests[create_request_index + 2].parameters[21],
+             std::string_view("88"),
+             "SQL character repository stores resolved model appearance id");
+  require(connection->requests[create_request_index + 3].sql.find("select id from login_characters") !=
+              std::string::npos,
+          "SQL character repository looks up the inserted login character id");
+  require(connection->requests[create_request_index + 4].sql.find("deleted = 1") !=
+              std::string::npos,
+          "SQL character repository deactivates duplicate world character ids after create");
+  require(connection->requests[create_request_index + 5].sql.find("insert into login_char_colors") !=
+              std::string::npos,
+          "SQL character repository saves created appearance color rows");
+  require_eq(connection->requests[create_request_index + 5].parameters[0],
+             std::string_view("501"),
+             "SQL character repository stores colors against the inserted login character id");
+  require_eq(connection->requests[create_request_index + 5].parameters[5],
+             std::string_view("1"),
+             "SQL character repository preserves signed legacy color rows");
+
+  connection->results.push_back(eq2::db::QueryResult{.affected_rows = 1});
+  require(characters.update_character_level(42, 3003, 77, 25),
+          "SQL character repository updates level from world metadata");
+  require(connection->requests.back().sql.find("set level") != std::string::npos,
+          "SQL character repository issues legacy level update");
+
+  connection->results.push_back(eq2::db::QueryResult{.affected_rows = 1});
+  require(characters.update_character_name(42, 3003, 77, "Renamed"),
+          "SQL character repository updates name from world metadata");
+  require_eq(connection->requests.back().parameters.front(), std::string_view("Renamed"),
+             "SQL character repository parameterizes renamed character");
+
+  require_eq(characters.save_world_zone_updates(
+                 77,
+                 {
+                     eq2::db::WorldZoneUpdateRecord{
+                         .zone_id = 12,
+                         .name = "qeynos",
+                         .description = "Qeynos",
+                     },
+                 }),
+             static_cast<std::size_t>(1),
+             "SQL character repository stores world zone update rows");
+  require(connection->requests.back().sql.find("replace into ls_world_zones") !=
+              std::string::npos,
+          "SQL character repository uses legacy world zone table");
+  require_eq(connection->requests.back().parameters[2], std::string_view("qeynos"),
+             "SQL character repository parameterizes world zone name");
+
+  connection->results.push_back(eq2::db::QueryResult{
+      .rows = {eq2::db::QueryRow{.columns = {{"id", "1001"}}}},
+  });
+  require_eq(characters.save_login_equipment_updates(
+                 77,
+                 {
+                     eq2::db::LoginEquipmentUpdateRecord{
+                         .update_id = 99,
+                         .world_character_id = 2002,
+                         .equip_type = 44,
+                         .red = 1,
+                         .green = 2,
+                         .blue = 3,
+                         .highlight_red = 4,
+                         .highlight_green = 5,
+                         .highlight_blue = 6,
+                         .slot = 7,
+                     },
+                 }),
+             static_cast<std::size_t>(1),
+             "SQL character repository stores login equipment update rows");
+  require(connection->requests[connection->requests.size() - 2].sql.find(
+              "select id from login_characters") != std::string::npos,
+          "SQL character repository maps world char id to login character id");
+  require(connection->requests.back().sql.find("replace into login_equipment") !=
+              std::string::npos,
+          "SQL character repository uses legacy login equipment table");
+
+  const std::array<std::uint8_t, 3> picture{0x0a, 0x0b, 0x0c};
+  require(characters.save_character_picture(42, 2002, 77, picture),
+          "SQL character repository stores character picture rows");
+  require(connection->requests.back().sql.find("ls_character_picture") != std::string::npos,
+          "SQL character repository uses legacy character picture table");
+  require_eq(connection->requests.back().parameters[3], std::string_view("0a0b0c"),
+             "SQL character repository hex-encodes picture bytes");
+
+  connection->results.push_back(eq2::db::QueryResult{
       .rows =
           {
               eq2::db::QueryRow{.columns =
@@ -284,7 +464,18 @@ void login_opcode_lookup_reads_legacy_opcode_table() {
               eq2::db::QueryRow{.columns = {{"name", "OP_AllWSDescRequestMsg"}, {"opcode", "4"}}},
               eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescRequestMsg"}, {"opcode", "5"}}},
               eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescReplyMsg"}, {"opcode", "6"}}},
-              eq2::db::QueryRow{.columns = {{"name", "OP_WSLoginRequestMsg"}, {"opcode", "7"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_CreateCharacterRequestMsg"}, {"opcode", "7"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_CreateCharacterReplyMsg"}, {"opcode", "8"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_DeleteCharacterRequestMsg"}, {"opcode", "9"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_DeleteCharacterReplyMsg"}, {"opcode", "10"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_PlayCharacterRequestMsg"}, {"opcode", "11"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_PlayCharacterReplyMsg"}, {"opcode", "12"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientCrashlogReplyMsg"}, {"opcode", "13"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientEq2CrashLogReplyMsg"}, {"opcode", "14"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientAlertlogReplyMsg"}, {"opcode", "15"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientVerifylogReplyMsg"}, {"opcode", "16"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientBaselogReplyMsg"}, {"opcode", "17"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_WSLoginRequestMsg"}, {"opcode", "18"}}},
           },
   });
 
@@ -304,13 +495,77 @@ void login_opcode_lookup_reads_legacy_opcode_table() {
                "login opcode lookup maps characters request opcode");
     require_eq(opcodes.value().characters_reply_opcode, static_cast<std::uint16_t>(6),
                "login opcode lookup maps characters reply opcode");
-    require_eq(opcodes.value().key_request_opcode, static_cast<std::uint16_t>(7),
+    require_eq(opcodes.value().create_character_request_opcode, static_cast<std::uint16_t>(7),
+               "login opcode lookup maps create-character request opcode");
+    require_eq(opcodes.value().create_character_reply_opcode, static_cast<std::uint16_t>(8),
+               "login opcode lookup maps create-character reply opcode");
+    require_eq(opcodes.value().delete_character_request_opcode, static_cast<std::uint16_t>(9),
+               "login opcode lookup maps delete-character request opcode");
+    require_eq(opcodes.value().delete_character_reply_opcode, static_cast<std::uint16_t>(10),
+               "login opcode lookup maps delete-character reply opcode");
+    require_eq(opcodes.value().play_character_request_opcode, static_cast<std::uint16_t>(11),
+               "login opcode lookup maps play-character request opcode");
+    require_eq(opcodes.value().play_character_reply_opcode, static_cast<std::uint16_t>(12),
+               "login opcode lookup maps play-character reply opcode");
+    require_eq(opcodes.value().client_crashlog_reply_opcode, static_cast<std::uint16_t>(13),
+               "login opcode lookup maps client crashlog reply opcode");
+    require_eq(opcodes.value().client_eq2_crashlog_reply_opcode, static_cast<std::uint16_t>(14),
+               "login opcode lookup maps client eq2 crashlog reply opcode");
+    require_eq(opcodes.value().client_alertlog_reply_opcode, static_cast<std::uint16_t>(15),
+               "login opcode lookup maps client alertlog reply opcode");
+    require_eq(opcodes.value().client_verifylog_reply_opcode, static_cast<std::uint16_t>(16),
+               "login opcode lookup maps client verifylog reply opcode");
+    require_eq(opcodes.value().client_baselog_reply_opcode, static_cast<std::uint16_t>(17),
+               "login opcode lookup maps client baselog reply opcode");
+    require_eq(opcodes.value().key_request_opcode, static_cast<std::uint16_t>(18),
                "login opcode lookup maps key request opcode");
   }
   require(connection.requests.front().sql.find("from opcodes") != std::string::npos,
           "login opcode lookup reads the opcodes table");
   require_eq(connection.requests.front().parameters.front(), std::string_view("546"),
              "login opcode lookup parameterizes client version");
+}
+
+void login_opcode_lookup_remaps_dof_client_log_reply_opcodes() {
+  ScriptedConnection connection;
+  connection.results.push_back(eq2::db::QueryResult{
+      .rows =
+          {
+              eq2::db::QueryRow{.columns = {{"name", "OP_LoginRequestMsg"}, {"opcode", "0"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LoginReplyMsg"}, {"opcode", "4"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_WorldListMsg"}, {"opcode", "8"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_AllWSDescRequestMsg"}, {"opcode", "9"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescRequestMsg"}, {"opcode", "10"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_AllCharactersDescReplyMsg"}, {"opcode", "11"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_CreateCharacterRequestMsg"}, {"opcode", "12"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_CreateCharacterReplyMsg"}, {"opcode", "13"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_DeleteCharacterRequestMsg"}, {"opcode", "16"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_DeleteCharacterReplyMsg"}, {"opcode", "17"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_PlayCharacterRequestMsg"}, {"opcode", "18"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_PlayCharacterReplyMsg"}, {"opcode", "19"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientBaselogReplyMsg"}, {"opcode", "213"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientCrashlogReplyMsg"}, {"opcode", "214"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientAlertlogReplyMsg"}, {"opcode", "215"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_LsClientVerifylogReplyMsg"}, {"opcode", "216"}}},
+              eq2::db::QueryRow{.columns = {{"name", "OP_WSLoginRequestMsg"}, {"opcode", "2"}}},
+          },
+  });
+
+  const auto opcodes = eq2::db::load_login_opcode_set(connection, 546);
+
+  require(opcodes.has_value(), "login opcode lookup accepts packetparser DoF log rows");
+  if (opcodes.has_value()) {
+    require_eq(opcodes.value().client_baselog_reply_opcode, static_cast<std::uint16_t>(213),
+               "DoF log remap keeps baselog opcode");
+    require_eq(opcodes.value().client_crashlog_reply_opcode, static_cast<std::uint16_t>(214),
+               "DoF log remap keeps crashlog opcode");
+    require_eq(opcodes.value().client_eq2_crashlog_reply_opcode, static_cast<std::uint16_t>(215),
+               "DoF log remap derives eq2 crashlog opcode");
+    require_eq(opcodes.value().client_alertlog_reply_opcode, static_cast<std::uint16_t>(216),
+               "DoF log remap shifts alertlog opcode");
+    require_eq(opcodes.value().client_verifylog_reply_opcode, static_cast<std::uint16_t>(217),
+               "DoF log remap derives verifylog opcode");
+  }
 }
 
 void login_opcode_version_range_lookup_reads_matching_legacy_ranges() {
@@ -371,15 +626,68 @@ void login_opcode_lookup_reports_missing_required_opcodes() {
           "login opcode lookup names the missing characters request opcode");
   require(opcodes.error().message.find("OP_AllCharactersDescReplyMsg") != std::string::npos,
           "login opcode lookup names the missing characters reply opcode");
+  require(opcodes.error().message.find("OP_CreateCharacterRequestMsg") != std::string::npos,
+          "login opcode lookup names the missing create request opcode");
+  require(opcodes.error().message.find("OP_PlayCharacterReplyMsg") != std::string::npos,
+          "login opcode lookup names the missing play reply opcode");
+  require(opcodes.error().message.find("OP_LsClientCrashlogReplyMsg") != std::string::npos,
+          "login opcode lookup names the missing crashlog opcode");
+  require(opcodes.error().message.find("OP_LsClientBaselogReplyMsg") != std::string::npos,
+          "login opcode lookup names the missing baselog opcode");
   require(opcodes.error().message.find("OP_WSLoginRequestMsg") != std::string::npos,
           "login opcode lookup names the missing key request opcode");
+}
+
+void sql_client_log_repository_stores_legacy_log_messages() {
+  auto connection = std::make_shared<ScriptedConnection>();
+  eq2::db::SqlClientLogRepository logs(connection);
+  logs.save_client_log(eq2::db::ClientLogRecord{
+      .type = "Crash Log",
+      .message = "client stack trace",
+      .account_name = "tester",
+      .client_version = 546,
+  });
+
+  require_eq(connection->requests.size(), static_cast<std::size_t>(1),
+             "client log repository executes one insert");
+  require(connection->requests.front().sql.find("insert into log_messages") != std::string::npos,
+          "client log repository stores logs in the legacy log_messages table");
+  require_eq(connection->requests.front().parameters[0], std::string_view("Crash Log"),
+             "client log repository stores legacy log type");
+  require_eq(connection->requests.front().parameters[1], std::string_view("client stack trace"),
+             "client log repository stores decompressed message text");
+  require_eq(connection->requests.front().parameters[2], std::string_view("tester"),
+             "client log repository stores account name");
+  require_eq(connection->requests.front().parameters[3], std::string_view("546"),
+             "client log repository stores client version");
+}
+
+void sql_login_maintenance_repository_runs_legacy_cleanup_jobs() {
+  auto connection = std::make_shared<ScriptedConnection>();
+  eq2::db::SqlLoginMaintenanceRepository maintenance(connection);
+  maintenance.remove_old_world_server_stats();
+  maintenance.remove_deleted_character_data();
+  maintenance.fix_bug_report_encoding();
+
+  require_eq(connection->requests.size(), static_cast<std::size_t>(4),
+             "login maintenance repository executes legacy cleanup statements");
+  require(connection->requests[0].sql.find("delete from login_worldstats") != std::string::npos,
+          "login maintenance removes old world stats");
+  require(connection->requests[0].sql.find("86400") != std::string::npos,
+          "login maintenance keeps legacy one-day world stats expiry");
+  require(connection->requests[1].sql.find("delete from login_char_colors") != std::string::npos,
+          "login maintenance removes deleted character color rows");
+  require(connection->requests[2].sql.find("delete from login_equipment") != std::string::npos,
+          "login maintenance removes deleted character equipment rows");
+  require(connection->requests[3].sql.find("update bugs set description") != std::string::npos,
+          "login maintenance runs legacy bug-report percent decoding fix");
 }
 
 void login_schema_preflight_checks_required_login_tables() {
   ScriptedConnection connection;
   const auto result = eq2::db::preflight_login_database_schema(connection);
   require(result.has_value(), "login schema preflight succeeds when probes execute");
-  require_eq(connection.requests.size(), static_cast<std::size_t>(10),
+  require_eq(connection.requests.size(), static_cast<std::size_t>(11),
              "login schema preflight checks tables and prepared account lookup");
   require(connection.requests[0].sql.find("from account") != std::string::npos,
           "login schema preflight checks account table");
@@ -401,9 +709,11 @@ void login_schema_preflight_checks_required_login_tables() {
           "login schema preflight checks login_char_colors table");
   require(connection.requests[8].sql.find("from ls_world_zones") != std::string::npos,
           "login schema preflight checks ls_world_zones table");
-  require(connection.requests[9].sql.find("name = ? and passwd = sha2(?, 512)") != std::string::npos,
+  require(connection.requests[9].sql.find("from log_messages") != std::string::npos,
+          "login schema preflight checks log_messages table");
+  require(connection.requests[10].sql.find("name = ? and passwd = sha2(?, 512)") != std::string::npos,
           "login schema preflight checks parameterized account lookup");
-  require_eq(connection.requests[9].parameters.size(), static_cast<std::size_t>(2),
+  require_eq(connection.requests[10].parameters.size(), static_cast<std::size_t>(2),
              "login schema preflight exercises prepared statement parameters");
 }
 
@@ -567,9 +877,12 @@ int main() {
   fake_repositories_cover_critical_login_world_character_and_zone_boundaries();
   sql_repositories_execute_expected_query_boundaries();
   login_opcode_lookup_reads_legacy_opcode_table();
+  login_opcode_lookup_remaps_dof_client_log_reply_opcodes();
   login_opcode_version_range_lookup_reads_matching_legacy_ranges();
   login_opcode_version_range_lookup_reports_missing_range();
   login_opcode_lookup_reports_missing_required_opcodes();
+  sql_client_log_repository_stores_legacy_log_messages();
+  sql_login_maintenance_repository_runs_legacy_cleanup_jobs();
   login_schema_preflight_checks_required_login_tables();
   login_schema_preflight_reports_failed_probe_context();
   login_schema_preflight_reports_prepared_lookup_failure();
