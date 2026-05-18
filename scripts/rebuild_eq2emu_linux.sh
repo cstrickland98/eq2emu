@@ -24,7 +24,7 @@ Options:
 
 Environment overrides:
   EQ2EMU_BASE, EQ2EMU_SRC, EQ2EMU_DEPS, EQ2EMU_RUN, JOBS
-  FMT_DIR, RECAST_DIR, CONTENT_DIR, MAPS_DIR
+  FMT_DIR, RECAST_DIR, RECAST_LIB_DIR, CONTENT_DIR, MAPS_DIR
 USAGE
 }
 
@@ -61,6 +61,73 @@ require_file() {
     local label="$2"
 
     [[ -f "$path" ]] || die "Missing ${label}: ${path}"
+}
+
+find_premake5() {
+    local candidate
+
+    for candidate in \
+        "$RECAST_DIR/RecastDemo/premake5" \
+        "$DEPS_DIR/premake5" \
+        "$BASE_DIR/premake5"; do
+        if [[ -f "$candidate" && ! -x "$candidate" ]]; then
+            chmod +x "$candidate" 2>/dev/null || true
+        fi
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    if command -v premake5 >/dev/null 2>&1; then
+        command -v premake5
+        return 0
+    fi
+
+    return 1
+}
+
+missing_recast_libraries() {
+    local missing=0
+    local lib
+
+    for lib in libDebugUtils.a libDetour.a libDetourCrowd.a libDetourTileCache.a libRecast.a; do
+        if [[ ! -f "$RECAST_LIB_DIR/$lib" ]]; then
+            printf '  %s/%s\n' "$RECAST_LIB_DIR" "$lib" >&2
+            missing=1
+        fi
+    done
+
+    return "$missing"
+}
+
+build_recast_libraries() {
+    local premake
+    local recast_build_dir="$RECAST_DIR/RecastDemo/Build/gmake2"
+
+    require_dir "$RECAST_DIR/RecastDemo" "RecastDemo directory"
+    premake="$(find_premake5 || true)"
+    [[ -n "$premake" ]] || die "Recast libraries are missing and premake5 was not found. Put premake5 at $RECAST_DIR/RecastDemo/premake5 or $DEPS_DIR/premake5"
+
+    log "Generating Recast makefiles with $premake"
+    (cd "$RECAST_DIR/RecastDemo" && "$premake" gmake2)
+
+    require_dir "$recast_build_dir" "Recast gmake2 build directory"
+    log "Building Recast libraries"
+    make -C "$recast_build_dir" -j"$JOBS"
+}
+
+ensure_recast_libraries() {
+    if missing_recast_libraries >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log "Recast libraries are missing; rebuilding Recast once"
+    build_recast_libraries
+
+    if ! missing_recast_libraries; then
+        die "Recast build finished, but required static libraries are still missing"
+    fi
 }
 
 first_existing_dir() {
@@ -133,7 +200,7 @@ patch_world_makefile() {
     detour_include="$(sed_replacement_escape "$RECAST_DIR/Detour/Include")"
     recast_include="$(sed_replacement_escape "$RECAST_DIR/Recast/Include")"
     debugutils_include="$(sed_replacement_escape "$RECAST_DIR/DebugUtils/Include")"
-    recast_lib="$(sed_replacement_escape "$RECAST_DIR/RecastDemo/Build/gmake2/lib/Debug")"
+    recast_lib="$(sed_replacement_escape "$RECAST_LIB_DIR")"
 
     sed -i -E \
         -e "s|-I[^[:space:]]*/fmt/include|-I${fmt_include}|g" \
@@ -241,6 +308,7 @@ main() {
     JOBS="${JOBS:-$(default_jobs)}"
     FMT_DIR="${FMT_DIR:-}"
     RECAST_DIR="${RECAST_DIR:-}"
+    RECAST_LIB_DIR="${RECAST_LIB_DIR:-}"
     CONTENT_DIR="${CONTENT_DIR:-}"
     MAPS_DIR="${MAPS_DIR:-}"
     COPY_ASSETS=1
@@ -260,6 +328,7 @@ main() {
 
     FMT_DIR="${FMT_DIR:-$(first_existing_dir "$DEPS_DIR/fmt" "$BASE_DIR/source/fmt" "$BASE_DIR/fmt" 2>/dev/null || true)}"
     RECAST_DIR="${RECAST_DIR:-$(first_existing_dir "$DEPS_DIR/recastnavigation" "$BASE_DIR/source/recastnavigation" "$BASE_DIR/recastnavigation" 2>/dev/null || true)}"
+    RECAST_LIB_DIR="${RECAST_LIB_DIR:-$RECAST_DIR/RecastDemo/Build/gmake2/lib/Debug}"
 
     if [[ "$COPY_ASSETS" -eq 1 ]]; then
         CONTENT_DIR="${CONTENT_DIR:-$(first_existing_dir "$DEPS_DIR/eq2emu-content" "$BASE_DIR/source/eq2emu-content" "$BASE_DIR/eq2emu-content" 2>/dev/null || true)}"
@@ -276,10 +345,11 @@ main() {
     require_dir "$RECAST_DIR/Detour/Include" "Recast Detour headers"
     require_dir "$RECAST_DIR/Recast/Include" "Recast headers"
     require_dir "$RECAST_DIR/DebugUtils/Include" "Recast DebugUtils headers"
-    require_dir "$RECAST_DIR/RecastDemo/Build/gmake2/lib/Debug" "Recast built libraries"
+    ensure_recast_libraries
 
     log "Source: $SRC_DIR"
     log "Dependencies: $DEPS_DIR"
+    log "Recast libraries: $RECAST_LIB_DIR"
     log "Runtime: $RUN_DIR"
     log "Jobs: $JOBS"
 
