@@ -35,6 +35,7 @@
 using namespace std;
 extern map<int16,OpcodeManager*>EQOpcodeManager;
 
+#if !defined(LOGIN)
 struct Client546RootOpcodeMap {
 	EmuOpcode opcode_name;
 	int16 opcode;
@@ -227,6 +228,19 @@ static bool GetClient546RootVeTypeEmuOpcode(uint16 opcode, EmuOpcode* opcode_nam
 
 	return false;
 }
+#else
+static bool GetClient546RootVeTypeOpcode(EmuOpcode opcode_name, int16* opcode) {
+	(void)opcode_name;
+	(void)opcode;
+	return false;
+}
+
+static bool GetClient546RootVeTypeEmuOpcode(uint16 opcode, EmuOpcode* opcode_name) {
+	(void)opcode;
+	(void)opcode_name;
+	return false;
+}
+#endif
 
 uint8 EQApplicationPacket::default_opcode_size=2;
 
