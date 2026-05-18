@@ -147,6 +147,29 @@ function Test-CodexSandboxOutboundBlock {
   }
 }
 
+function ConvertTo-StartProcessArguments {
+  param(
+    [string[]]$Arguments
+  )
+
+  return @($Arguments | ForEach-Object {
+    if ($null -eq $_) {
+      return '""'
+    }
+
+    $value = [string]$_
+    if ($value.Length -eq 0) {
+      return '""'
+    }
+
+    if ($value -match '[\s"]') {
+      return '"' + ($value -replace '"', '\"') + '"'
+    }
+
+    return $value
+  })
+}
+
 function Resolve-Secret {
   param(
     [string]$Value,
@@ -277,7 +300,7 @@ if ($RunServeProbe) {
   $env:EQ2_WORLD_ACCOUNT = $null
   $env:EQ2_WORLD_PASSWORD = $null
   $process = Start-Process -FilePath $loginServer `
-    -ArgumentList $serveArgs `
+    -ArgumentList (ConvertTo-StartProcessArguments $serveArgs) `
     -PassThru `
     -NoNewWindow `
     -RedirectStandardOutput $stdout `
@@ -322,7 +345,7 @@ if ($RunServeProbe) {
       )
 
       $worldProcess = Start-Process -FilePath $worldServer `
-        -ArgumentList $worldArgs `
+        -ArgumentList (ConvertTo-StartProcessArguments $worldArgs) `
         -PassThru `
         -NoNewWindow `
         -RedirectStandardOutput $worldStdout `
