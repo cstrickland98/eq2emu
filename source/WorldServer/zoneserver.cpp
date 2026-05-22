@@ -3591,6 +3591,14 @@ void ZoneServer::AddSpawn(Spawn* spawn) {
 	spawn->SetAddedToWorldTimestamp(Timer::GetCurrentTime2());
 }
 
+void ZoneServer::AddSpawnWithExpireTimer(Spawn* spawn, int32 expire_time, int32 expire_offset) {
+	if (!spawn)
+		return;
+	if (expire_time > 0)
+		AddSpawnExpireTimer(spawn, expire_time, expire_offset);
+	AddSpawn(spawn);
+}
+
 void ZoneServer::AddClient(Client* client){
 	MClientList.writelock(__FUNCTION__, __LINE__);
 	lifetime_client_count++;

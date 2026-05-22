@@ -12432,8 +12432,7 @@ void Commands::Command_ModelViewer(Client* client, Seperator* sep) {
 		preview->SetTotalPower(level * 25 + 1);
 		preview->SetPower(preview->GetTotalPower());
 
-		client->GetCurrentZone()->AddSpawn(preview);
-		client->GetCurrentZone()->AddSpawnExpireTimer(preview, 120);
+		client->GetCurrentZone()->AddSpawnWithExpireTimer(preview, 120);
 		client->Message(CHANNEL_COLOR_YELLOW, "Spawned temporary model preview %u for 120 seconds. Target it and use /modelviewer clear to remove it early.", model_type);
 		return;
 	}

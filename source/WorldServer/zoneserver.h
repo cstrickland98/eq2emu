@@ -318,6 +318,7 @@ public:
 	Widget*	AddWidgetSpawn(SpawnLocation* spawnlocation, SpawnEntry* spawnentry);
 	Sign*	AddSignSpawn(SpawnLocation* spawnlocation, SpawnEntry* spawnentry);
 	void	AddSpawn(Spawn* spawn);
+	void	AddSpawnWithExpireTimer(Spawn* spawn, int32 expire_time, int32 expire_offset = 0);
 	void	RemoveDeadEnemyList(Spawn* spawn);
 	void	RemoveDeadSpawn(Spawn* spawn);
 	
