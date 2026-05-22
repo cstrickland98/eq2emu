@@ -150,6 +150,25 @@ struct ClaimItems {
 	int32 vet_reward_time;
 };
 
+struct ModelViewerModel {
+	int32 model_type;
+	string category;
+	string subcategory;
+	string model_name;
+};
+
+struct ModelViewerSpawn {
+	int32 spawn_id;
+	string name;
+	int32 model_type;
+	int32 soga_model_type;
+	int16 min_level;
+	int16 max_level;
+	int16 size;
+	int8 heroic_flag;
+	int8 gender;
+};
+
 class Bot;
 
 class WorldDatabase : public Database {
@@ -163,6 +182,8 @@ public:
 
 	string	GetZoneName(int32 id);
 	string	GetZoneDescription(int32 id);
+	vector<ModelViewerModel> GetModelViewerModels(const string& search, int32 limit = 25);
+	vector<ModelViewerSpawn> GetModelViewerSpawns(const string& search, int32 limit = 25);
 	int32	LoadCharacterSkills(int32 char_id, Player* player);
 	void	DeleteCharacterSkill(int32 char_id, Skill* skill);
 	void	DeleteCharacterSpell(int32 character_id, int32 spell_id);

@@ -1,0 +1,7 @@
+/.serena
+/.vs
+/artifacts
+/build
+/out
+migrationv3_d3d9_probe.obj
+/scripts/__pycache__

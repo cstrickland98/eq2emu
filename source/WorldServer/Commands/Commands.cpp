@@ -5862,6 +5862,7 @@ void Commands::Process(int32 index, EQ2_16BitString* command_parms, Client* clie
 		case SAVE_AA_PROFILE			: { Save_AA_Profile(client, sep); break; }
 		case COMMAND_TARGETITEM			: { Command_TargetItem(client, sep); break; }
 		case COMMAND_FINDSPAWN: { Command_FindSpawn(client, sep); break; }
+		case COMMAND_MODEL_VIEWER: { Command_ModelViewer(client, sep); break; }
 		case COMMAND_MOVECHARACTER: { Command_MoveCharacter(client, sep); break; }
 		case COMMAND_CRAFTITEM: {
 					Item* item = 0;
@@ -12243,6 +12244,201 @@ void Commands::Command_TargetItem(Client* client, Seperator* sep) {
 void Commands::Command_FindSpawn(Client* client, Seperator* sep) {
 	if(sep)
 		client->GetCurrentZone()->FindSpawn(client, (char*)sep->argplus[0]);
+}
+
+void Commands::Command_ModelViewer(Client* client, Seperator* sep) {
+	if (!client || !client->GetPlayer() || !client->GetCurrentZone())
+		return;
+
+	auto show_help = [client]() {
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Model viewer commands:");
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "/modelviewer list [name|model_id] - search eq2models");
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "/modelviewer npc [name|spawn_id|model_id] - search NPC spawn models");
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "/modelviewer preview [model_id] (size) (level) (name) - spawn a temporary preview NPC");
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "/modelviewer clear - remove the targeted preview spawn");
+	};
+
+	auto is_unsigned_integer = [](const char* value) {
+		if (!value || value[0] == '\0')
+			return false;
+		for (int32 i = 0; value[i] != '\0'; i++) {
+			if (value[i] < '0' || value[i] > '9')
+				return false;
+		}
+		return true;
+	};
+
+	if (!sep || !sep->IsSet(0)) {
+		show_help();
+		return;
+	}
+
+	string action = ToLower(string(sep->arg[0]));
+
+	if (action == "list" || action == "search") {
+		if (!sep->IsSet(1)) {
+			client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Usage: /modelviewer list [name|model_id]");
+			return;
+		}
+
+		vector<ModelViewerModel> models = database.GetModelViewerModels(string(sep->argplus[1]), 20);
+		if (models.empty()) {
+			client->SimpleMessage(CHANNEL_COLOR_YELLOW, "No matching models found.");
+			return;
+		}
+
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Model matches:");
+		for (auto& model : models) {
+			if (model.model_type <= 65535) {
+				client->Message(CHANNEL_COLOR_YELLOW, "%u | %s / %s | %s | preview: /modelviewer preview %u",
+					model.model_type,
+					model.category.c_str(),
+					model.subcategory.c_str(),
+					model.model_name.c_str(),
+					model.model_type);
+			}
+			else {
+				client->Message(CHANNEL_COLOR_YELLOW, "%u | %s / %s | %s | not previewable by current spawn model field",
+					model.model_type,
+					model.category.c_str(),
+					model.subcategory.c_str(),
+					model.model_name.c_str());
+			}
+		}
+		return;
+	}
+
+	if (action == "npc" || action == "spawns") {
+		if (!sep->IsSet(1)) {
+			client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Usage: /modelviewer npc [name|spawn_id|model_id]");
+			return;
+		}
+
+		vector<ModelViewerSpawn> spawns = database.GetModelViewerSpawns(string(sep->argplus[1]), 20);
+		if (spawns.empty()) {
+			client->SimpleMessage(CHANNEL_COLOR_YELLOW, "No matching NPC spawn models found.");
+			return;
+		}
+
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "NPC model matches:");
+		for (auto& spawn : spawns) {
+			if (spawn.model_type <= 65535) {
+				client->Message(CHANNEL_COLOR_YELLOW, "%u | %s | model %u soga %u | level %u-%u | preview: /modelviewer preview %u %u %u",
+					spawn.spawn_id,
+					spawn.name.c_str(),
+					spawn.model_type,
+					spawn.soga_model_type,
+					spawn.min_level,
+					spawn.max_level,
+					spawn.model_type,
+					spawn.size,
+					spawn.min_level > 0 ? spawn.min_level : 1);
+			}
+			else {
+				client->Message(CHANNEL_COLOR_YELLOW, "%u | %s | model %u soga %u | level %u-%u | not previewable by current spawn model field",
+					spawn.spawn_id,
+					spawn.name.c_str(),
+					spawn.model_type,
+					spawn.soga_model_type,
+					spawn.min_level,
+					spawn.max_level);
+			}
+		}
+		return;
+	}
+
+	if (action == "clear" || action == "remove") {
+		Spawn* target = client->GetPlayer()->GetTarget();
+		if (target && !target->IsPlayer() && target->GetDatabaseID() == 0 && strncmp(target->GetName(), "[Preview]", 9) == 0) {
+			string name = target->GetName();
+			client->GetCurrentZone()->RemoveSpawn(target, true, false, true, true, true);
+			client->Message(CHANNEL_COLOR_YELLOW, "Removed preview spawn '%s'.", name.c_str());
+		}
+		else {
+			client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Target a modelviewer preview spawn first.");
+		}
+		return;
+	}
+
+	if (action == "preview" || action == "show") {
+		if (!sep->IsSet(1) || !is_unsigned_integer(sep->arg[1])) {
+			client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Usage: /modelviewer preview [model_id] (size) (level) (name)");
+			return;
+		}
+
+		int32 model_type = atoul(sep->arg[1]);
+		if (model_type > 65535) {
+			client->SimpleMessage(CHANNEL_COLOR_RED, "Model IDs above 65535 are not supported by the current spawn appearance type.");
+			return;
+		}
+
+		int32 size = 32;
+		if (sep->IsSet(2) && is_unsigned_integer(sep->arg[2]))
+			size = atoul(sep->arg[2]);
+		if (size < 1)
+			size = 1;
+		else if (size > 255)
+			size = 255;
+
+		int32 level = 1;
+		if (sep->IsSet(3) && is_unsigned_integer(sep->arg[3]))
+			level = atoul(sep->arg[3]);
+		if (level < 1)
+			level = 1;
+		else if (level > 255)
+			level = 255;
+
+		string name = "Model " + to_string(model_type) + " Preview";
+		if (sep->IsSet(4))
+			name = sep->argplus[4];
+		if (name.compare(0, 9, "[Preview]") != 0)
+			name = "[Preview] " + name;
+		if (name.length() > 63)
+			name.resize(63);
+
+		NPC* preview = new NPC();
+		memset(&preview->appearance, 0, sizeof(preview->appearance));
+		preview->SetID(Spawn::NextID());
+		preview->SetName(name.c_str());
+		preview->SetX(client->GetPlayer()->GetX() + .5f);
+		preview->SetY(client->GetPlayer()->GetY());
+		preview->SetZ(client->GetPlayer()->GetZ() + .5f);
+
+		float heading = client->GetPlayer()->GetHeading() + 180.0f;
+		if (heading > 360.0f)
+			heading -= 360.0f;
+		preview->SetHeading(heading);
+
+		preview->SetSpawnOrigX(preview->GetX());
+		preview->SetSpawnOrigY(preview->GetY());
+		preview->SetSpawnOrigZ(preview->GetZ());
+		preview->SetSpawnOrigHeading(preview->GetHeading());
+		preview->SetLocation(client->GetPlayer()->GetLocation());
+		preview->SetModelType((int16)model_type);
+		preview->SetSogaModelType((int16)model_type);
+		preview->SetRace(255);
+		preview->SetAdventureClass(1);
+		preview->SetLevel((int16)level);
+		preview->SetSize((int16)size);
+		preview->SetDifficulty(0);
+		preview->SetTargetable(1);
+		preview->SetShowName(1);
+		preview->SetShowLevel(1);
+		preview->SetAttackable(0);
+		preview->SetShowCommandIcon(0);
+		preview->SetCollisionRadius(32);
+		preview->SetTotalHP(level * 25 + 1);
+		preview->SetHP(preview->GetTotalHP());
+		preview->SetTotalPower(level * 25 + 1);
+		preview->SetPower(preview->GetTotalPower());
+
+		client->GetCurrentZone()->AddSpawn(preview);
+		client->GetCurrentZone()->AddSpawnExpireTimer(preview, 120);
+		client->Message(CHANNEL_COLOR_YELLOW, "Spawned temporary model preview %u for 120 seconds. Target it and use /modelviewer clear to remove it early.", model_type);
+		return;
+	}
+
+	show_help();
 }
 
 void Commands::Command_MoveCharacter(Client* client, Seperator* sep) {

@@ -433,6 +433,7 @@ public:
 	void Command_TargetItem(Client* client, Seperator* set);
 
 	void Command_FindSpawn(Client* client, Seperator* set);
+	void Command_ModelViewer(Client* client, Seperator* sep);
 
 	void Command_MoveCharacter(Client* client, Seperator* set);
 
@@ -1002,6 +1003,7 @@ private:
 #define COMMAND_STORE_UNLIST_ITEM		808
 #define COMMAND_CLOSE_STORE_KEEP_SELLING 809
 #define COMMAND_CANCEL_STORE			810
+#define COMMAND_MODEL_VIEWER			811
 	
 #define COMMAND_MODIFY				1000 // INSERT INTO `commands`(`id`,`type`,`command`,`subcommand`,`handler`,`required_status`) VALUES ( NULL,'1','modify','','1000','200'); 
 #define COMMAND_MODIFY_CHARACTER	1001

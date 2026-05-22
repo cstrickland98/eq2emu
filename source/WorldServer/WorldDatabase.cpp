@@ -24,6 +24,7 @@
 #include <iomanip>
 #include <ios>
 #include <assert.h>
+#include <cctype>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string.hpp>
 
@@ -48,6 +49,7 @@
 #include "Languages.h"
 #include "Traits/Traits.h"
 #include "ClientPacketFunctions.h"
+#include "Commands/Commands.h"
 #include "Zone/ChestTrap.h"
 #include "../common/version.h"
 #include "SpellProcess.h"
@@ -77,6 +79,43 @@ extern MasterLanguagesList master_languages_list;
 extern ChestTrapList chest_trap_list;
 extern PeerManager peer_manager;
 BrokerManager broker;
+
+static bool IsUnsignedNumber(const string& value) {
+	if (value.empty())
+		return false;
+
+	for (char character : value) {
+		if (!std::isdigit(static_cast<unsigned char>(character)))
+			return false;
+	}
+
+	return true;
+}
+
+static int32 ClampModelViewerLimit(int32 limit) {
+	if (limit < 1)
+		return 1;
+	if (limit > 100)
+		return 100;
+	return limit;
+}
+
+static string ResultString(DatabaseResult& result, unsigned int index) {
+	return result.IsNull(index) ? string("") : string(result.GetString(index));
+}
+
+static void EnsureBuiltinCommand(int32 handler, const char* command_name, sint16 required_status) {
+	RemoteCommands* remote_commands = commands.GetRemoteCommands();
+	while (static_cast<int32>(remote_commands->commands.size()) < handler)
+		remote_commands->addZero();
+
+	if (static_cast<int32>(remote_commands->commands.size()) == handler) {
+		remote_commands->addCommand(EQ2_RemoteCommandString(const_cast<char*>(command_name), handler, required_status));
+	}
+	else if (remote_commands->commands[handler].command.size == 0) {
+		remote_commands->commands[handler] = EQ2_RemoteCommandString(const_cast<char*>(command_name), handler, required_status);
+	}
+}
 
 //devn00b: Fix for linux builds since we dont use stricmp we use strcasecmp
 #if defined(__GNUC__)
@@ -525,8 +564,124 @@ void WorldDatabase::LoadCommandList()
 		commands.GetRemoteCommands()->addCommand(EQ2_RemoteCommandString(row[0], handler, atoi(row[2])));
 		index++;
 	}
+	EnsureBuiltinCommand(COMMAND_MODEL_VIEWER, "modelviewer", 200);
+	index = static_cast<int16>(commands.GetRemoteCommands()->commands.size());
 	LogWrite(COMMAND__DEBUG, 3, "Command", "--Loaded %i Command%s", index, index > 0 ? "s" : "");
 	LoadSubCommandList();
+}
+
+vector<ModelViewerModel> WorldDatabase::GetModelViewerModels(const string& search, int32 limit) {
+	vector<ModelViewerModel> models;
+	DatabaseResult result;
+	limit = ClampModelViewerLimit(limit);
+
+	string trimmed_search = boost::algorithm::trim_copy(search);
+	string wildcard = "%" + database_new.EscapeStr(trimmed_search) + "%";
+	bool numeric_search = IsUnsignedNumber(trimmed_search);
+
+	bool selected = false;
+	if (trimmed_search.empty()) {
+		selected = database_new.Select(&result,
+			"SELECT model_type, category, subcategory, model_name "
+			"FROM eq2models "
+			"ORDER BY category, subcategory, model_name, model_type "
+			"LIMIT %u",
+			limit);
+	}
+	else if (numeric_search) {
+		int32 model_type = atoul(trimmed_search.c_str());
+		selected = database_new.Select(&result,
+			"SELECT model_type, category, subcategory, model_name "
+			"FROM eq2models "
+			"WHERE model_type = %u OR category LIKE '%s' OR subcategory LIKE '%s' OR model_name LIKE '%s' "
+			"ORDER BY CASE WHEN model_type = %u THEN 0 ELSE 1 END, category, subcategory, model_name, model_type "
+			"LIMIT %u",
+			model_type, wildcard.c_str(), wildcard.c_str(), wildcard.c_str(), model_type, limit);
+	}
+	else {
+		selected = database_new.Select(&result,
+			"SELECT model_type, category, subcategory, model_name "
+			"FROM eq2models "
+			"WHERE category LIKE '%s' OR subcategory LIKE '%s' OR model_name LIKE '%s' "
+			"ORDER BY category, subcategory, model_name, model_type "
+			"LIMIT %u",
+			wildcard.c_str(), wildcard.c_str(), wildcard.c_str(), limit);
+	}
+
+	if (!selected)
+		return models;
+
+	while (result.Next()) {
+		ModelViewerModel model;
+		model.model_type = result.GetInt32(0);
+		model.category = ResultString(result, 1);
+		model.subcategory = ResultString(result, 2);
+		model.model_name = ResultString(result, 3);
+		models.push_back(model);
+	}
+
+	return models;
+}
+
+vector<ModelViewerSpawn> WorldDatabase::GetModelViewerSpawns(const string& search, int32 limit) {
+	vector<ModelViewerSpawn> spawns;
+	DatabaseResult result;
+	limit = ClampModelViewerLimit(limit);
+
+	string trimmed_search = boost::algorithm::trim_copy(search);
+	string wildcard = "%" + database_new.EscapeStr(trimmed_search) + "%";
+	bool numeric_search = IsUnsignedNumber(trimmed_search);
+
+	bool selected = false;
+	if (trimmed_search.empty()) {
+		selected = database_new.Select(&result,
+			"SELECT s.id, s.name, s.model_type, npc.soga_model_type, npc.min_level, npc.max_level, s.size, npc.heroic_flag, npc.gender "
+			"FROM spawn s "
+			"INNER JOIN spawn_npcs npc ON npc.spawn_id = s.id "
+			"ORDER BY s.name, s.id "
+			"LIMIT %u",
+			limit);
+	}
+	else if (numeric_search) {
+		int32 numeric = atoul(trimmed_search.c_str());
+		selected = database_new.Select(&result,
+			"SELECT s.id, s.name, s.model_type, npc.soga_model_type, npc.min_level, npc.max_level, s.size, npc.heroic_flag, npc.gender "
+			"FROM spawn s "
+			"INNER JOIN spawn_npcs npc ON npc.spawn_id = s.id "
+			"WHERE s.id = %u OR s.model_type = %u OR npc.soga_model_type = %u OR s.name LIKE '%s' "
+			"ORDER BY CASE WHEN s.id = %u THEN 0 WHEN s.model_type = %u THEN 1 WHEN npc.soga_model_type = %u THEN 2 ELSE 3 END, s.name, s.id "
+			"LIMIT %u",
+			numeric, numeric, numeric, wildcard.c_str(), numeric, numeric, numeric, limit);
+	}
+	else {
+		selected = database_new.Select(&result,
+			"SELECT s.id, s.name, s.model_type, npc.soga_model_type, npc.min_level, npc.max_level, s.size, npc.heroic_flag, npc.gender "
+			"FROM spawn s "
+			"INNER JOIN spawn_npcs npc ON npc.spawn_id = s.id "
+			"WHERE s.name LIKE '%s' "
+			"ORDER BY s.name, s.id "
+			"LIMIT %u",
+			wildcard.c_str(), limit);
+	}
+
+	if (!selected)
+		return spawns;
+
+	while (result.Next()) {
+		ModelViewerSpawn spawn;
+		spawn.spawn_id = result.GetInt32(0);
+		spawn.name = ResultString(result, 1);
+		spawn.model_type = result.GetInt32(2);
+		spawn.soga_model_type = result.GetInt32(3);
+		spawn.min_level = result.GetInt16(4);
+		spawn.max_level = result.GetInt16(5);
+		spawn.size = result.GetInt16(6);
+		spawn.heroic_flag = result.GetInt8(7);
+		spawn.gender = result.GetInt8(8);
+		spawns.push_back(spawn);
+	}
+
+	return spawns;
 }
 
 int32 WorldDatabase::LoadNPCSpells(){
