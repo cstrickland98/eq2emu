@@ -252,45 +252,50 @@ void World::init(std::string web_ipaddr, int16 web_port, std::string cert_file, 
 	if(web_ipaddr.size() > 0 && web_port > 0) {
 	try {
 			world_webserver = new WebServer(web_ipaddr, web_port, cert_file, key_file, key_password, hardcode_user, hardcode_password);
+
+			// browser UI
+			world_webserver->register_route("/", World::Web_worldhandle_dashboard, false);
+			world_webserver->register_route("/ui", World::Web_worldhandle_dashboard, false);
+			world_webserver->register_route("/routes", World::Web_worldhandle_routes, false);
 			
 			// status providers
-			world_webserver->register_route("/status", World::Web_worldhandle_status);
-			world_webserver->register_route("/clients", World::Web_worldhandle_clients);
-			world_webserver->register_route("/zones", World::Web_worldhandle_zones);
+			world_webserver->register_route("/status", World::Web_worldhandle_status, false);
+			world_webserver->register_route("/clients", World::Web_worldhandle_clients, false);
+			world_webserver->register_route("/zones", World::Web_worldhandle_zones, false);
 			
 			// administrative commands
-			world_webserver->register_route("/setadminstatus", World::Web_worldhandle_setadminstatus);
-			world_webserver->register_route("/reloadrules", World::Web_worldhandle_reloadrules);
-			world_webserver->register_route("/reloadcommand", World::Web_worldhandle_reloadcommand);
+			world_webserver->register_route("/setadminstatus", World::Web_worldhandle_setadminstatus, false);
+			world_webserver->register_route("/reloadrules", World::Web_worldhandle_reloadrules, false);
+			world_webserver->register_route("/reloadcommand", World::Web_worldhandle_reloadcommand, false);
 			
 			// peering capabilities
-			world_webserver->register_route("/addpeer", World::Web_worldhandle_addpeer);
-			world_webserver->register_route("/addcharauth", World::Web_worldhandle_addcharauth);
-			world_webserver->register_route("/startzone", World::Web_worldhandle_startzone);
+			world_webserver->register_route("/addpeer", World::Web_worldhandle_addpeer, false);
+			world_webserver->register_route("/addcharauth", World::Web_worldhandle_addcharauth, false);
+			world_webserver->register_route("/startzone", World::Web_worldhandle_startzone, false);
 			
-			world_webserver->register_route("/sendglobalmessage", World::Web_worldhandle_sendglobalmessage);
+			world_webserver->register_route("/sendglobalmessage", World::Web_worldhandle_sendglobalmessage, false);
 			
-			world_webserver->register_route("/newgroup", World::Web_worldhandle_newgroup);
-			world_webserver->register_route("/addgroupmember", World::Web_worldhandle_addgroupmember);
-			world_webserver->register_route("/removegroupmember", World::Web_worldhandle_removegroupmember);
-			world_webserver->register_route("/disbandgroup", World::Web_worldhandle_disbandgroup);
+			world_webserver->register_route("/newgroup", World::Web_worldhandle_newgroup, false);
+			world_webserver->register_route("/addgroupmember", World::Web_worldhandle_addgroupmember, false);
+			world_webserver->register_route("/removegroupmember", World::Web_worldhandle_removegroupmember, false);
+			world_webserver->register_route("/disbandgroup", World::Web_worldhandle_disbandgroup, false);
 			
-			world_webserver->register_route("/createguild", World::Web_worldhandle_createguild);
-			world_webserver->register_route("/addguildmember", World::Web_worldhandle_addguildmember);
-			world_webserver->register_route("/removeguildmember", World::Web_worldhandle_removeguildmember);
-			world_webserver->register_route("/setguildpermission", World::Web_worldhandle_setguildpermission);
-			world_webserver->register_route("/setguildeventfilter", World::Web_worldhandle_setguildeventfilter);
+			world_webserver->register_route("/createguild", World::Web_worldhandle_createguild, false);
+			world_webserver->register_route("/addguildmember", World::Web_worldhandle_addguildmember, false);
+			world_webserver->register_route("/removeguildmember", World::Web_worldhandle_removeguildmember, false);
+			world_webserver->register_route("/setguildpermission", World::Web_worldhandle_setguildpermission, false);
+			world_webserver->register_route("/setguildeventfilter", World::Web_worldhandle_setguildeventfilter, false);
 			
-			world_webserver->register_route("/peerstatus", World::Web_worldhandle_peerstatus);
-			world_webserver->register_route("/activequery", World::Web_worldhandle_activequery);
+			world_webserver->register_route("/peerstatus", World::Web_worldhandle_peerstatus, false);
+			world_webserver->register_route("/activequery", World::Web_worldhandle_activequery, false);
 			
-			world_webserver->register_route("/addseller", World::Web_worldhandle_addseller);
-			world_webserver->register_route("/removeseller", World::Web_worldhandle_removeseller);
-			world_webserver->register_route("/additemsale", World::Web_worldhandle_additemsale);
-			world_webserver->register_route("/removeitemsale", World::Web_worldhandle_removeitemsale);
+			world_webserver->register_route("/addseller", World::Web_worldhandle_addseller, false);
+			world_webserver->register_route("/removeseller", World::Web_worldhandle_removeseller, false);
+			world_webserver->register_route("/additemsale", World::Web_worldhandle_additemsale, false);
+			world_webserver->register_route("/removeitemsale", World::Web_worldhandle_removeitemsale, false);
 			
-			world_webserver->register_route("/addplayerhouse", World::Web_worldhandle_addplayerhouse);
-			world_webserver->register_route("/updatehousedeposit", World::Web_worldhandle_updatehousedeposit);
+			world_webserver->register_route("/addplayerhouse", World::Web_worldhandle_addplayerhouse, false);
+			world_webserver->register_route("/updatehousedeposit", World::Web_worldhandle_updatehousedeposit, false);
 
 			// no-auth local content authoring workbench
 			world_webserver->register_route("/content", World::Web_worldhandle_content, false);

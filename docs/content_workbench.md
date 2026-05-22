@@ -1,22 +1,51 @@
 # EQ2Emu Content Workbench
 
-The content workbench is a no-auth web UI served by the World Server at:
+The World Server now serves a no-auth browser dashboard at:
+
+```text
+/ or /ui
+```
+
+The content workbench is linked from that dashboard and is also available directly at:
 
 ```text
 /content
 ```
 
-It is intended for local GM/content development workflows. It provides zone inspection, validation, map visualization, and simple builders for common content rows.
+These pages are intended for local GM/content development workflows. They provide route navigation, server status views, zone inspection, validation, map visualization, and simple builders for common content rows.
 
 ## Routes
 
-- `/content` and `/content/` - Accessible HTML workbench.
+- `/` and `/ui` - Accessible World Server dashboard.
+- `/routes` - Route metadata used by the dashboard route explorer.
+- `/content` and `/content/` - Accessible content workbench.
 - `/content/api/bootstrap` - Zone list and online editor positions.
 - `/content/api/zone` - Manifest, map points, audit issues, and quest validation for one zone.
 - `/content/api/search` - Model metadata and existing NPC model search.
 - `/content/api/apply` - Dry-run and apply endpoint for builders.
 
-All workbench routes are registered with `auth_required = false`.
+The dashboard, content workbench, and World Server web routes are registered with `auth_required = false`; no `webhardcodeuser`, `webhardcodepassword`, `web_users`, or `web_routes` setup is required for these pages.
+
+## Access
+
+Set `WorldServer.webaddress` and `WorldServer.webport` in `server_config.json`, rebuild, and restart the World Server. Example:
+
+```json
+"WorldServer": {
+  "webaddress": "127.0.0.1",
+  "webport": "8080",
+  "webcertfile": "",
+  "webkeyfile": "",
+  "webhardcodeuser": "",
+  "webhardcodepassword": ""
+}
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8080/
+```
 
 ## Included Tools
 

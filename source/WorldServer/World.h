@@ -751,6 +751,8 @@ public:
 	static void Web_worldhandle_addplayerhouse(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	static void Web_worldhandle_updatehousedeposit(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	static void Web_worldhandle_addchatchannel(const http::request<http::string_body>& req, http::response<http::string_body>& res);
+	static void Web_worldhandle_dashboard(const http::request<http::string_body>& req, http::response<http::string_body>& res);
+	static void Web_worldhandle_routes(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	static void Web_worldhandle_content(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	static void Web_worldhandle_content_bootstrap(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	static void Web_worldhandle_content_zone(const http::request<http::string_body>& req, http::response<http::string_body>& res);

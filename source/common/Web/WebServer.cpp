@@ -80,8 +80,34 @@ void web_handle_version(const http::request<http::string_body>& req, http::respo
 }
 
 void web_handle_root(const http::request<http::string_body>& req, http::response<http::string_body>& res) {
-    res.set(http::field::content_type, "text/html");
-    res.body() = "Hello!";
+    res.set(http::field::content_type, "text/html; charset=utf-8");
+    res.body() = R"HTML(<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EQ2Emu Web Server</title>
+<style>
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f7f7f4;color:#17211b;line-height:1.4}
+header{background:#123127;color:#fff;padding:18px 24px;border-bottom:4px solid #b9882c}
+main{max-width:980px;margin:0 auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+a.card{display:block;padding:16px;border:1px solid #cbd3cc;border-radius:8px;background:#fff;color:#17211b;text-decoration:none}
+a.card:focus{outline:3px solid #111;outline-offset:2px}
+.muted{color:#5e6962}
+</style>
+</head>
+<body>
+<header><h1>EQ2Emu Web Server</h1></header>
+<main>
+<div class="grid">
+<a class="card" href="/version"><strong>Version</strong><br><span class="muted">Build and module metadata</span></a>
+<a class="card" href="/status"><strong>Status</strong><br><span class="muted">Server status JSON</span></a>
+<a class="card" href="/content"><strong>Content Workbench</strong><br><span class="muted">Zone content authoring UI</span></a>
+</div>
+</main>
+</body>
+</html>)HTML";
     res.prepare_payload();
 }
 
@@ -115,8 +141,8 @@ WebServer::WebServer(const std::string& address, unsigned short port, const std:
 	if(hardcode_user.size() > 0 && hardcode_password.size() > 0)
 		credentials_[hardcode_user] = hardcode_password;
 	
-	register_route("/", web_handle_root);
-	register_route("/version", web_handle_version);
+	register_route("/", web_handle_root, false);
+	register_route("/version", web_handle_version, false);
 }
 
 WebServer::~WebServer() {
@@ -156,6 +182,19 @@ void WebServer::register_route(const std::string& uri, std::function<void(const 
 		noauth_routes_[uri] = handler;
 	}
 	route_required_status_[uri] = status;
+}
+
+static std::string web_normalize_target(beast::string_view target) {
+	std::string path(target);
+	size_t query_pos = path.find('?');
+	if (query_pos != std::string::npos)
+		path = path.substr(0, query_pos);
+	size_t fragment_pos = path.find('#');
+	if (fragment_pos != std::string::npos)
+		path = path.substr(0, fragment_pos);
+	if (path.size() > 1 && path.back() == '/')
+		path.pop_back();
+	return path.empty() ? "/" : path;
 }
 
 void WebServer::do_accept() {
@@ -248,7 +287,8 @@ void WebServer::do_session_ssl(tcp::socket socket) {
 
 template <class Body, class Allocator>
 void WebServer::handle_request(http::request<Body, http::basic_fields<Allocator>>&& req, std::function<void(http::response<http::string_body>&&)> send) {
-    auto it = noauth_routes_.find(std::string(req.target()));
+	std::string target = web_normalize_target(req.target());
+    auto it = noauth_routes_.find(target);
     if (it != noauth_routes_.end()) {
         http::response<http::string_body> res{http::status::ok, req.version()};
         res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
@@ -266,7 +306,7 @@ void WebServer::handle_request(http::request<Body, http::basic_fields<Allocator>
         return send(std::move(res));
     }
 	
-	auto status_it = route_required_status_.find(std::string(req.target()));
+	auto status_it = route_required_status_.find(target);
     if (status_it != route_required_status_.end()) {
 		if(status_it->second > 0 && status_it->second != 0xFFFFFFFF && status_it->second > user_status) {
 			http::response<http::string_body> res{http::status::unauthorized, req.version()};
@@ -277,7 +317,7 @@ void WebServer::handle_request(http::request<Body, http::basic_fields<Allocator>
 		}
 	}
 
-    it = routes_.find(std::string(req.target()));
+    it = routes_.find(target);
     if (it != routes_.end()) {
         http::response<http::string_body> res{http::status::ok, req.version()};
 		res.set(http::field::set_cookie, "session_id=" + session_id);
@@ -293,7 +333,11 @@ void WebServer::handle_request(http::request<Body, http::basic_fields<Allocator>
     res.prepare_payload();
     return send(std::move(res));
 	*/
-    return send(http::response<http::string_body>{http::status::bad_request, req.version()});
+	http::response<http::string_body> res{http::status::not_found, req.version()};
+	res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+	res.body() = "Not Found";
+	res.prepare_payload();
+    return send(std::move(res));
 }
 
 

@@ -669,6 +669,262 @@ static std::string BuildDialogLua(const ptree& body, const std::string& script_n
 	return lua.str();
 }
 
+static void AddRouteInfo(ptree& routes, const std::string& route, const std::string& method, const std::string& group, const std::string& description, const std::string& payload = "") {
+	ptree item;
+	item.put("route", route);
+	item.put("method", method);
+	item.put("group", group);
+	item.put("description", description);
+	item.put("payload", payload);
+	routes.push_back(std::make_pair("", item));
+}
+
+static void PopulateRouteMetadata(ptree& root) {
+	ptree routes;
+	AddRouteInfo(routes, "/", "GET", "UI", "World web dashboard.");
+	AddRouteInfo(routes, "/ui", "GET", "UI", "World web dashboard.");
+	AddRouteInfo(routes, "/content", "GET", "UI", "Content workbench.");
+	AddRouteInfo(routes, "/routes", "GET", "UI", "Route metadata used by the dashboard.");
+	AddRouteInfo(routes, "/version", "GET", "Status", "Build and module metadata.");
+	AddRouteInfo(routes, "/status", "GET", "Status", "World, login, peer, and uptime status.");
+	AddRouteInfo(routes, "/clients", "GET", "Status", "Connected client and character details.");
+	AddRouteInfo(routes, "/zones", "GET", "Status", "Active zone server details.");
+	AddRouteInfo(routes, "/content/api/bootstrap", "POST", "Content", "Content workbench bootstrap data.", "{}");
+	AddRouteInfo(routes, "/content/api/zone", "POST", "Content", "Full content manifest for a zone.", "{\"zone_id\":1}");
+	AddRouteInfo(routes, "/content/api/search", "POST", "Content", "Model and NPC model search.", "{\"search\":\"gnoll\"}");
+	AddRouteInfo(routes, "/content/api/apply", "POST", "Content", "Dry-run or apply a content builder action.", "{\"action\":\"npc\",\"dry_run\":true}");
+	AddRouteInfo(routes, "/reloadrules", "POST", "Admin", "Reload world rules.", "{}");
+	AddRouteInfo(routes, "/reloadcommand", "POST", "Admin", "Run a reload command by command id.", "{\"reload_command\":0,\"sub_command\":0}");
+	AddRouteInfo(routes, "/setadminstatus", "POST", "Admin", "Set an online or stored character admin status.", "{\"character_name\":\"Name\",\"new_status\":200}");
+	AddRouteInfo(routes, "/startzone", "POST", "Admin", "Start or locate a zone.", "{\"zone_name\":\"antonica\"}");
+	AddRouteInfo(routes, "/addcharauth", "POST", "Admin", "Add temporary character zone authorization.", "{\"account_id\":1,\"character_id\":1,\"character_name\":\"Name\",\"zone_name\":\"zone\",\"client_ip\":\"127.0.0.1\"}");
+	AddRouteInfo(routes, "/sendglobalmessage", "POST", "Admin", "Send a global message.", "{\"from_name\":\"Server\",\"to_name\":\"\",\"message\":\"Message\",\"channel\":92}");
+	AddRouteInfo(routes, "/activequery", "POST", "Admin", "Check active DB query state.", "{\"character_id\":1}");
+	AddRouteInfo(routes, "/peerstatus", "GET", "Peering", "Peer status snapshot.");
+	AddRouteInfo(routes, "/addpeer", "POST", "Peering", "Register or update a web peer.", "{\"client_address\":\"127.0.0.1\",\"client_port\":9001,\"web_address\":\"127.0.0.1\",\"web_port\":8080}");
+	AddRouteInfo(routes, "/newgroup", "POST", "Groups", "Create a group.", "{\"leader\":\"Leader\",\"member\":\"Member\"}");
+	AddRouteInfo(routes, "/addgroupmember", "POST", "Groups", "Add a group member.", "{\"leader\":\"Leader\",\"member\":\"Member\"}");
+	AddRouteInfo(routes, "/removegroupmember", "POST", "Groups", "Remove a group member.", "{\"name\":\"Member\"}");
+	AddRouteInfo(routes, "/disbandgroup", "POST", "Groups", "Disband a group.", "{\"group_id\":1}");
+	AddRouteInfo(routes, "/createguild", "POST", "Guilds", "Create a guild.", "{\"guild_name\":\"Guild\",\"leader_name\":\"Leader\"}");
+	AddRouteInfo(routes, "/addguildmember", "POST", "Guilds", "Add a guild member.", "{\"guild_id\":1,\"character_id\":1,\"invited_by\":\"Leader\"}");
+	AddRouteInfo(routes, "/removeguildmember", "POST", "Guilds", "Remove a guild member.", "{\"guild_id\":1,\"character_id\":1,\"removed_by\":\"Leader\"}");
+	AddRouteInfo(routes, "/setguildpermission", "POST", "Guilds", "Set guild rank permission data.", "{}");
+	AddRouteInfo(routes, "/setguildeventfilter", "POST", "Guilds", "Set guild event filter data.", "{}");
+	AddRouteInfo(routes, "/addseller", "POST", "Broker", "Add broker seller session data.", "{}");
+	AddRouteInfo(routes, "/removeseller", "POST", "Broker", "Remove broker seller session data.", "{}");
+	AddRouteInfo(routes, "/additemsale", "POST", "Broker", "Add broker sale item.", "{}");
+	AddRouteInfo(routes, "/removeitemsale", "POST", "Broker", "Remove broker sale item.", "{}");
+	AddRouteInfo(routes, "/addplayerhouse", "POST", "Housing", "Add player house data.", "{}");
+	AddRouteInfo(routes, "/updatehousedeposit", "POST", "Housing", "Update player house escrow/deposit data.", "{}");
+	root.add_child("routes", routes);
+}
+
+static const char* DashboardHtml() {
+	return R"HTML(<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EQ2Emu World Dashboard</title>
+<style>
+:root{color-scheme:light;--bg:#f7f7f4;--panel:#fff;--ink:#17211b;--muted:#5e6962;--line:#cbd3cc;--accent:#246b55;--accent2:#365f91;--warn:#9a5b00;--danger:#a43838;--focus:#111}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink);line-height:1.4}
+header{background:#123127;color:#fff;padding:16px 24px;border-bottom:4px solid #b9882c}
+header h1{margin:0;font-size:1.35rem}
+main{max-width:1380px;margin:0 auto;padding:20px}
+a{color:var(--accent2)}
+button,input,select,textarea{font:inherit}
+button{border:1px solid #1d5544;background:var(--accent);color:#fff;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer}
+button.secondary{background:#fff;color:var(--accent)}
+button.warning{background:var(--warn);border-color:#784600}
+button:focus,a:focus,input:focus,textarea:focus,select:focus,[tabindex]:focus{outline:3px solid var(--focus);outline-offset:2px}
+input,select,textarea{width:100%;border:1px solid #9aa6a0;border-radius:6px;padding:8px 10px;background:#fff;color:var(--ink)}
+textarea{min-height:120px;resize:vertical;font-family:Consolas,Monaco,monospace}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+.card strong{display:block;font-size:1.5rem}
+.muted{color:var(--muted)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:10px 0}
+.toolbar>*{flex:0 1 auto}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:10px 0 16px}
+.tab{background:#fff;color:var(--ink);border-color:var(--line);border-bottom-left-radius:0;border-bottom-right-radius:0}
+.tab[aria-selected=true]{background:var(--accent2);color:#fff;border-color:var(--accent2)}
+.view{display:none}
+.view.active{display:block}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th,td{padding:8px 10px;border-bottom:1px solid #e2e6e2;text-align:left;vertical-align:top}
+th{background:#eef2ee;position:sticky;top:0;z-index:1}
+pre{white-space:pre-wrap;overflow:auto;background:#111815;color:#eef9f1;padding:12px;border-radius:8px;max-height:460px}
+.route-grid{display:grid;grid-template-columns:minmax(260px,380px) minmax(0,1fr);gap:14px}
+.route-list{max-height:680px;overflow:auto}
+.route-item{display:block;width:100%;text-align:left;margin:0 0 7px;background:#fff;color:var(--ink);border-color:var(--line)}
+.route-item.active{border-color:var(--accent2);box-shadow:inset 4px 0 0 var(--accent2)}
+.pill{display:inline-block;padding:2px 7px;border-radius:999px;background:#e7ece8;border:1px solid #ccd6d0;font-size:.86rem}
+.status{min-height:24px;color:var(--muted)}
+@media(max-width:900px){.route-grid{grid-template-columns:1fr}main{padding:14px}table{min-width:640px}}
+</style>
+</head>
+<body>
+<header><h1>EQ2Emu World Dashboard</h1></header>
+<main>
+  <div class="toolbar">
+    <a href="/content"><button type="button">Content Workbench</button></a>
+    <button class="secondary" id="refresh">Refresh</button>
+    <a href="/version"><button class="secondary" type="button">Version JSON</button></a>
+    <a href="/status"><button class="secondary" type="button">Status JSON</button></a>
+  </div>
+  <div id="summary" class="grid"></div>
+  <div class="tabs" role="tablist" aria-label="Dashboard sections">
+    <button class="tab" role="tab" aria-selected="true" aria-controls="overview" id="tab-overview">Overview</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="clients" id="tab-clients">Clients</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="zones" id="tab-zones">Zones</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="routes" id="tab-routes">Routes</button>
+  </div>
+  <section id="overview" class="view active" role="tabpanel" aria-labelledby="tab-overview"></section>
+  <section id="clients" class="view" role="tabpanel" aria-labelledby="tab-clients"></section>
+  <section id="zones" class="view" role="tabpanel" aria-labelledby="tab-zones"></section>
+  <section id="routes" class="view" role="tabpanel" aria-labelledby="tab-routes"></section>
+  <div id="statusLine" class="status" role="status" aria-live="polite"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let state = { version: null, status: null, clients: [], zones: [], routes: [], selectedRoute: null };
+
+async function requestJson(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${text.slice(0, 200)}`);
+    try { return JSON.parse(text); } catch { throw new Error(`Route did not return JSON: ${text.slice(0, 200)}`); }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function table(headers, rows) {
+  return `<div class="table-wrap"><table><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('') || `<tr><td colspan="${headers.length}">No rows found.</td></tr>`}</tbody></table></div>`;
+}
+
+function metric(label, value) {
+  return `<div class="card"><strong>${esc(value ?? 0)}</strong><span class="muted">${esc(label)}</span></div>`;
+}
+
+async function refresh() {
+  $('statusLine').textContent = 'Loading dashboard data...';
+  try {
+    const [version, status, clients, zones, routes] = await Promise.all([
+      requestJson('/version'),
+      requestJson('/status'),
+      requestJson('/clients'),
+      requestJson('/zones'),
+      requestJson('/routes')
+    ]);
+    state.version = version;
+    state.status = status;
+    state.clients = clients.Clients || [];
+    state.zones = zones.Zones || [];
+    state.routes = routes.routes || [];
+    state.selectedRoute = state.routes[0] || null;
+    render();
+    $('statusLine').textContent = 'Dashboard data loaded.';
+  } catch (err) {
+    $('statusLine').textContent = String(err);
+  }
+}
+
+function render() {
+  const s = state.status || {};
+  $('summary').innerHTML = [
+    metric('World', s.world_status || 'unknown'),
+    metric('Players', s.player_count),
+    metric('Clients', s.client_count),
+    metric('Active Zones', s.zones_connected),
+    metric('Login', s.login_connected || 'unknown'),
+    metric('Reloading', s.world_reloading || 'unknown')
+  ].join('');
+  $('overview').innerHTML = `<div class="panel"><h2>Status</h2><pre>${esc(JSON.stringify({ version: state.version, status: state.status }, null, 2))}</pre></div>`;
+  $('clients').innerHTML = `<div class="panel"><h2>Clients</h2>${table(['Character','Zone','Level','Status','Account','Version'], state.clients.map(c => `<tr><td>${esc(c.character_name)}</td><td>${esc(c.zonename)}</td><td>${esc(c.level)}</td><td>${esc(c.status)}</td><td>${esc(c.account_id)}</td><td>${esc(c.version)}</td></tr>`))}</div>`;
+  $('zones').innerHTML = `<div class="panel"><h2>Zones</h2>${table(['Zone','File','ID','Instance','Players','Lock'], state.zones.map(z => `<tr><td>${esc(z.zone_name)}</td><td>${esc(z.zone_file_name)}</td><td>${esc(z.zone_id)}</td><td>${esc(z.instance_id)}</td><td>${esc(z.num_players)}</td><td>${esc(z.lock_state)}</td></tr>`))}</div>`;
+  renderRoutes();
+}
+
+function renderRoutes() {
+  const groups = [...new Set(state.routes.map(r => r.group))];
+  const selected = state.selectedRoute;
+  $('routes').innerHTML = `<div class="route-grid">
+    <div class="panel route-list">
+      <label for="routeFilter">Filter</label>
+      <input id="routeFilter" placeholder="status, content, guilds">
+      <div id="routeButtons"></div>
+    </div>
+    <div class="panel">
+      <h2 id="routeTitle">${selected ? esc(selected.route) : 'Route'}</h2>
+      <p><span class="pill">${selected ? esc(selected.method) : ''}</span> <span class="pill">${selected ? esc(selected.group) : ''}</span></p>
+      <p class="muted">${selected ? esc(selected.description) : ''}</p>
+      <label for="payload">JSON Payload</label>
+      <textarea id="payload">${selected ? esc(selected.payload || '{}') : '{}'}</textarea>
+      <div class="toolbar">
+        <button id="runRoute">Run Route</button>
+        ${selected && selected.method === 'GET' ? `<a id="openRoute" href="${esc(selected.route)}"><button class="secondary" type="button">Open Route</button></a>` : '<button class="secondary" type="button" disabled>Open Route</button>'}
+      </div>
+      <pre id="routeOutput">No route run yet.</pre>
+    </div>
+  </div>`;
+  const drawButtons = () => {
+    const filter = $('routeFilter').value.toLowerCase();
+    $('routeButtons').innerHTML = groups.map(group => {
+      const routes = state.routes.filter(r => r.group === group && (`${r.route} ${r.description} ${r.group}`).toLowerCase().includes(filter));
+      if (!routes.length) return '';
+      return `<h3>${esc(group)}</h3>${routes.map(r => `<button class="route-item ${selected && selected.route === r.route ? 'active' : ''}" data-route="${esc(r.route)}"><span class="pill">${esc(r.method)}</span> ${esc(r.route)}<br><span class="muted">${esc(r.description)}</span></button>`).join('')}`;
+    }).join('');
+    document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => {
+      state.selectedRoute = state.routes.find(r => r.route === button.dataset.route);
+      renderRoutes();
+    }));
+  };
+  drawButtons();
+  $('routeFilter').addEventListener('input', drawButtons);
+  $('runRoute').addEventListener('click', runSelectedRoute);
+}
+
+async function runSelectedRoute() {
+  const route = state.selectedRoute;
+  if (!route) return;
+  if (route.group === 'UI' && route.route !== '/routes') {
+    $('routeOutput').textContent = 'Open this browser page with the Open Route button.';
+    return;
+  }
+  $('routeOutput').textContent = 'Running...';
+  try {
+    const options = route.method === 'POST'
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: $('payload').value || '{}' }
+      : {};
+    const data = await requestJson(route.route, options);
+    $('routeOutput').textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    $('routeOutput').textContent = String(err);
+  }
+}
+
+document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', 'false'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  tab.setAttribute('aria-selected', 'true');
+  $(tab.getAttribute('aria-controls')).classList.add('active');
+}));
+$('refresh').addEventListener('click', refresh);
+refresh();
+</script>
+</body>
+</html>)HTML";
+}
+
 static bool RunInsert(Query& query, const std::string& sql) {
 	query.RunQuery2(sql, Q_INSERT);
 	return query.GetErrorNumber() == 0;
@@ -1230,9 +1486,16 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const num = value => Number(value || 0);
 
 async function postJson(url, body = {}) {
-  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${text.slice(0, 200)}`);
+    try { return JSON.parse(text); } catch { throw new Error(`Route did not return JSON: ${text.slice(0, 200)}`); }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function setStatus(text) { $('sideStatus').textContent = text; }
@@ -1507,6 +1770,19 @@ bootstrap().catch(err => setStatus(String(err)));
 }
 
 using boost::property_tree::ptree;
+
+void World::Web_worldhandle_dashboard(const http::request<http::string_body>& req, http::response<http::string_body>& res) {
+	res.set(http::field::content_type, kHtmlType);
+	res.body() = DashboardHtml();
+	res.prepare_payload();
+}
+
+void World::Web_worldhandle_routes(const http::request<http::string_body>& req, http::response<http::string_body>& res) {
+	ptree response;
+	PopulateRouteMetadata(response);
+	response.put("success", 1);
+	WriteJson(res, response);
+}
 
 void ZoneList::PopulateContentEditorList(boost::property_tree::ptree& pt) {
 	ptree editors;
