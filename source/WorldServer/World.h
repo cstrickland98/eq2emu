@@ -562,6 +562,7 @@ class ZoneList {
 	
 	void	PopulateClientList(boost::property_tree::ptree& pt);
 	void	PopulateZoneList(boost::property_tree::ptree& pt);
+	void	PopulateContentEditorList(boost::property_tree::ptree& pt);
 	
 	bool	IsZoneShutdownAllowed() { return zone_shutdown_allowed.load() == 0; } 
 private:
@@ -750,6 +751,11 @@ public:
 	static void Web_worldhandle_addplayerhouse(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	static void Web_worldhandle_updatehousedeposit(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	static void Web_worldhandle_addchatchannel(const http::request<http::string_body>& req, http::response<http::string_body>& res);
+	static void Web_worldhandle_content(const http::request<http::string_body>& req, http::response<http::string_body>& res);
+	static void Web_worldhandle_content_bootstrap(const http::request<http::string_body>& req, http::response<http::string_body>& res);
+	static void Web_worldhandle_content_zone(const http::request<http::string_body>& req, http::response<http::string_body>& res);
+	static void Web_worldhandle_content_search(const http::request<http::string_body>& req, http::response<http::string_body>& res);
+	static void Web_worldhandle_content_apply(const http::request<http::string_body>& req, http::response<http::string_body>& res);
 	
 	static void Web_populate_status(boost::property_tree::ptree& pt);
 	

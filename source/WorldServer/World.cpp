@@ -291,6 +291,14 @@ void World::init(std::string web_ipaddr, int16 web_port, std::string cert_file, 
 			
 			world_webserver->register_route("/addplayerhouse", World::Web_worldhandle_addplayerhouse);
 			world_webserver->register_route("/updatehousedeposit", World::Web_worldhandle_updatehousedeposit);
+
+			// no-auth local content authoring workbench
+			world_webserver->register_route("/content", World::Web_worldhandle_content, false);
+			world_webserver->register_route("/content/", World::Web_worldhandle_content, false);
+			world_webserver->register_route("/content/api/bootstrap", World::Web_worldhandle_content_bootstrap, false);
+			world_webserver->register_route("/content/api/zone", World::Web_worldhandle_content_zone, false);
+			world_webserver->register_route("/content/api/search", World::Web_worldhandle_content_search, false);
+			world_webserver->register_route("/content/api/apply", World::Web_worldhandle_content_apply, false);
 			world_webserver->run();
 			LogWrite(INIT__INFO, 0, "Init", "World Web Server is listening on %s:%u..", web_ipaddr.c_str(), web_port);
 			web_success = true;
