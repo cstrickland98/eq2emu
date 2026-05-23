@@ -64,8 +64,10 @@ typedef unsigned short		ushort;
 typedef unsigned char		uchar;
 
 #ifdef WIN32
-	#define snprintf	_snprintf
-	#define vsnprintf	_vsnprintf
+	#if !defined(_MSC_VER) || _MSC_VER < 1900
+		#define snprintf	_snprintf
+		#define vsnprintf	_vsnprintf
+	#endif
 	#define strncasecmp	_strnicmp
 	#define strcasecmp  _stricmp
 	typedef void ThreadReturnType;

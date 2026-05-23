@@ -138,9 +138,13 @@ void WebServer::start() {
 }
 
 void WebServer::run() {
+#ifdef WIN32
+	_beginthread(RunWebServer, 0, this);
+#else
 	pthread_t thread;
 	pthread_create(&thread, NULL, RunWebServer, this);
 	pthread_detach(thread);
+#endif
 }
 
 

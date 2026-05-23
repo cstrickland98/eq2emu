@@ -50,8 +50,10 @@ extern map<int16, int16> EQOpcodeVersions;
 	#include <WinSock2.h>
 	#include <windows.h>
 
-	#define snprintf	_snprintf
-	#define vsnprintf	_vsnprintf
+	#if !defined(_MSC_VER) || _MSC_VER < 1900
+		#define snprintf	_snprintf
+		#define vsnprintf	_vsnprintf
+	#endif
 	#define strncasecmp	_strnicmp
 	#define strcasecmp  _stricmp
 #else

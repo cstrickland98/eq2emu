@@ -1,0 +1,7 @@
+/build/
+/.vs/
+/.serena/
+/artifacts/
+/out/
+__pycache__/
+*.obj

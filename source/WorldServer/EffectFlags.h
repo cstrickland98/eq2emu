@@ -31,7 +31,7 @@
 #include <variant>
 #include <vector>
 
-class LuaSpell;
+struct LuaSpell;
 
 // ----------------------------- Core bitflags --------------------------------
 template <std::size_t NBits>

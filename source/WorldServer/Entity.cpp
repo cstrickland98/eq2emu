@@ -624,7 +624,7 @@ void Entity::RegisterProperty(const std::string& name) {
 			return;
 		}
 
-		set_string_funcs.emplace(name, [this, name, database, charID](std::string v) {
+		set_string_funcs.emplace(name, [this, name, charID](std::string v) {
 			{
 				std::lock_guard<std::mutex> lk(GetInfoStruct()->classMutex);
 				GetInfoStruct()->props[name] = v;

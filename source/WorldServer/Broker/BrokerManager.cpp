@@ -30,6 +30,14 @@ extern WorldDatabase database;
 extern ZoneList zone_list;
 extern PeerManager peer_manager;
 
+static void BrokerLocalTime(const std::time_t* now, std::tm* tm) {
+#ifdef _WIN32
+	localtime_s(tm, now);
+#else
+	localtime_r(now, tm);
+#endif
+}
+
 BrokerManager::BrokerManager() {
 	
 }
@@ -844,7 +852,7 @@ std::string BrokerManager::GetShopPurchaseMessage(const std::string& buyer_name,
 	// 1) Timestamp
 	auto now = std::time(nullptr);
 	std::tm tm;
-	localtime_r(&now, &tm);
+	BrokerLocalTime(&now, &tm);
 	char timebuf[64];
 	std::strftime(timebuf, sizeof(timebuf),
 				  "%B %d, %Y, %I:%M:%S %p", &tm);
@@ -904,7 +912,7 @@ void BrokerManager::LogSaleMessage(int32  cid,
 {
 	auto now = std::time(nullptr);
 	std::tm tm;
-	localtime_r(&now, &tm);
+	BrokerLocalTime(&now, &tm);
 	char timebuf[64];
 	std::strftime(timebuf, sizeof(timebuf),
 				  "%B %d, %Y, %I:%M:%S %p", &tm);

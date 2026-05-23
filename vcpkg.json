@@ -1,0 +1,39 @@
+{
+  "name": "eq2emu",
+  "version-string": "0.1.0",
+  "builtin-baseline": "c1ce926ddf75f166cbdd444bbaf463410ac99b17",
+  "dependencies": [
+    "boost-algorithm",
+    "boost-asio",
+    "boost-assign",
+    "boost-beast",
+    "boost-filesystem",
+    "boost-foreach",
+    "boost-function",
+    "boost-geometry",
+    "boost-graph",
+    "boost-iostreams",
+    "boost-lambda",
+    "boost-program-options",
+    "boost-property-tree",
+    "boost-regex",
+    "boost-thread",
+    "fmt",
+    "glm",
+    {
+      "name": "libmariadb",
+      "features": [
+        "openssl"
+      ]
+    },
+    {
+      "name": "lua",
+      "features": [
+        "cpp"
+      ]
+    },
+    "openssl",
+    "recastnavigation",
+    "zlib"
+  ]
+}
