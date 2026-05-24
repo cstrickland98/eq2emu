@@ -1,0 +1,1 @@
+cmake --build --preset windows-msvc-vcpkg --config Debug

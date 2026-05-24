@@ -1,0 +1,2 @@
+a mariadb instance is located at 192.168.1.243 user=eq2emu and pass=eq2emu
+This instance is already populated with the latest content

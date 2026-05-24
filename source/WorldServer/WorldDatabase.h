@@ -185,6 +185,7 @@ public:
 	int32	GetNextSpawnLocation(bool isInstanceType = false);
 	bool	CreateNewSpawnLocation(int32 id, const char* name, bool isHouseType = false);
 	bool	RemoveSpawnFromSpawnLocation(Spawn* spawn);
+	bool	RemoveSpawnPlacement(Spawn* spawn);
 	int32	GetSpawnLocationCount(int32 location, Spawn* spawn = 0);
 	vector<string>* GetSpawnNameList(const char* in_name);
 	void	LoadSubCommandList();
