@@ -799,7 +799,8 @@ void LuaInterface::RemoveCurrentSpell(lua_State* state, LuaSpell* cur_spell, boo
 		MSpellDelete.lock();
 	}
 	map<lua_State*, LuaSpell*>::iterator itr = current_spells.find(state);
-	if(removeSpellScript && itr->second) {
+	bool current_spell_matches = itr != current_spells.end() && itr->second == cur_spell;
+	if(removeSpellScript && cur_spell) {
 		MSpellScripts.writelock(__FUNCTION__, __LINE__);
 		map<string, map<lua_State*, LuaSpell*> >::iterator spell_script_itr = spell_scripts.find(cur_spell->file_name);
 		if(spell_script_itr != spell_scripts.end()) {
@@ -814,7 +815,7 @@ void LuaInterface::RemoveCurrentSpell(lua_State* state, LuaSpell* cur_spell, boo
 		}
 		MSpellScripts.releasewritelock(__FUNCTION__, __LINE__);
 	}
-	if(itr != current_spells.end() && removeCurSpell)
+	if(current_spell_matches && removeCurSpell)
 		current_spells.erase(itr);
 	if(needsLock) {
 		MSpellDelete.unlock();
