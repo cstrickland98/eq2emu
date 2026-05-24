@@ -7,8 +7,8 @@
 #include "../common/debug.h"
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
+#include <WinSock2.h>
 #include <windows.h>
-#include <winsock.h>
 #include <process.h>
 #else
 #include <sys/socket.h>

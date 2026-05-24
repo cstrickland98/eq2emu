@@ -3,9 +3,12 @@ log_config.xml
 login_db.ini
 world_db.ini
 eq2world
+eq2world.exe
 login
+login.exe
 ItemScripts/
 Maps/
+PlayerScripts/
 Quests/
 RegionScripts/
 Regions/
@@ -13,5 +16,7 @@ SpawnScripts/
 Spells/
 ZoneScripts/
 logs/
+plugins/
+*.dll
 *.pem
 *.log

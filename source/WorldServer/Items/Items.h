@@ -29,6 +29,12 @@
 #include "../Commands/Commands.h"
 #include "../../common/ConfigReader.h"
 
+#ifdef _WIN32
+#ifdef OVERFLOW
+#undef OVERFLOW
+#endif
+#endif
+
 using namespace std;
 class MasterItemList;
 class Player;

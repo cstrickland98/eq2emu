@@ -6,7 +6,9 @@
 
 
 #ifdef WIN32
+#if !defined(_MSC_VER)
 #define _snprintf snprintf
+#endif
 #include <WinSock2.h>
 #include <windows.h>
 #endif

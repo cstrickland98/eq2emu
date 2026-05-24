@@ -35,7 +35,7 @@ extern ZoneList zone_list;
 
 #ifdef _WIN32
 	#include <process.h>
-	#ifndef snprintf
+	#if (!defined(_MSC_VER) || _MSC_VER < 1900) && !defined(snprintf)
 		#define snprintf sprintf_s
 	#endif
 #include <WinSock2.h>
