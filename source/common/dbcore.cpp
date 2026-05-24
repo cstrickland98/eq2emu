@@ -49,7 +49,18 @@ using namespace std;
 #endif
 
 DBcore::DBcore() {
+#ifdef WIN32
+	if (!getenv("MARIADB_TLS_DISABLE_PEER_VERIFICATION"))
+		_putenv_s("MARIADB_TLS_DISABLE_PEER_VERIFICATION", "1");
+#else
+	if (!getenv("MARIADB_TLS_DISABLE_PEER_VERIFICATION"))
+		setenv("MARIADB_TLS_DISABLE_PEER_VERIFICATION", "1", 0);
+#endif
 	mysql_init(&mysql);
+	my_bool ssl_enforce = 0;
+	mysql_options(&mysql, MYSQL_OPT_SSL_ENFORCE, &ssl_enforce);
+	my_bool ssl_verify_server_cert = 0;
+	mysql_options(&mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &ssl_verify_server_cert);
 	pHost = 0;
 	pPort = 0;
 	pUser = 0;
@@ -316,6 +327,12 @@ bool DBcore::Open(int32* errnum, char* errbuf) {
 		flags |= CLIENT_COMPRESS;
 	if (pSSL)
 		flags |= CLIENT_SSL;
+	my_bool ssl_enforce = pSSL ? 1 : 0;
+	mysql_options(&mysql, MYSQL_OPT_SSL_ENFORCE, &ssl_enforce);
+	if (!pSSL) {
+		my_bool ssl_verify_server_cert = 0;
+		mysql_options(&mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &ssl_verify_server_cert);
+	}
 	if (mysql_real_connect(&mysql, pHost, pUser, pPassword, pDatabase, pPort, 0, flags)) {
 		pStatus = Connected;
 		return true;

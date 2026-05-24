@@ -5922,6 +5922,11 @@ void Commands::Process(int32 index, EQ2_16BitString* command_parms, Client* clie
 		case COMMAND_SPLIT: { Command_Split(client, sep); break; }
 		case COMMAND_RAIDSAY: { Command_RaidSay(client, sep); break; }
 		case COMMAND_RELOAD_ZONEINFO: { Command_ReloadZoneInfo(client, sep); break; }
+		case COMMAND_DEVMODE: { Command_DevMode(client, sep); break; }
+		case COMMAND_SPAWNPREVIEW: { Command_SpawnPreview(client, sep); break; }
+		case COMMAND_SPAWNSAVE: { Command_SpawnSave(client, sep); break; }
+		case COMMAND_SPAWNCLONE: { Command_SpawnClone(client, sep); break; }
+		case COMMAND_SPAWNDELETE: { Command_SpawnDelete(client, sep); break; }
 		case COMMAND_SLE: { Command_SetLocationEntry(client, sep); break; }
 		case COMMAND_STORE_LIST_ITEM: { Command_StoreListItem(client, sep); break; }
 		case COMMAND_STORE_SET_PRICE: { Command_StoreSetPrice(client, sep); break; }
@@ -5960,6 +5965,329 @@ void Commands::Process(int32 index, EQ2_16BitString* command_parms, Client* clie
 //void Commands::Command()
 //{
 //}
+
+static bool PlacementCommandAllowed(Client* client) {
+	if (!client || !client->GetPlayer())
+		return false;
+
+	if (client->GetAdminStatus() < 100) {
+		client->SimpleMessage(CHANNEL_COLOR_RED, "Error: Your status is insufficient for placement tooling.");
+		return false;
+	}
+
+	if (!client->GetCurrentZone()) {
+		client->SimpleMessage(CHANNEL_COLOR_RED, "Placement tooling requires an active zone.");
+		return false;
+	}
+
+	return true;
+}
+
+static void ResetPlacementSpawnIds(Spawn* spawn) {
+	if (!spawn)
+		return;
+
+	spawn->SetID(Spawn::NextID());
+	spawn->SetDatabaseID(0);
+	spawn->SetSpawnLocationID(0);
+	spawn->SetSpawnLocationPlacementID(0);
+	spawn->SetSpawnEntryID(0);
+	spawn->SetSpawnGroupID(0);
+	spawn->SetPickupItemID(0);
+	spawn->SetPickupUniqueItemID(0);
+}
+
+static void PlaceSpawnAtClient(Client* client, Spawn* spawn) {
+	if (!client || !client->GetPlayer() || !spawn)
+		return;
+
+	spawn->SetX(client->GetPlayer()->GetX());
+	spawn->SetY(client->GetPlayer()->GetY());
+	spawn->SetZ(client->GetPlayer()->GetZ());
+	spawn->SetHeading(client->GetPlayer()->GetHeading());
+	spawn->SetSpawnOrigX(spawn->GetX());
+	spawn->SetSpawnOrigY(spawn->GetY());
+	spawn->SetSpawnOrigZ(spawn->GetZ());
+	spawn->SetSpawnOrigHeading(spawn->GetHeading());
+	spawn->SetLocation(client->GetPlayer()->GetLocation());
+	spawn->SetZone(client->GetCurrentZone());
+}
+
+static bool IsPlacementGroundSpawnType(const char* type) {
+	return type && (strnicmp(type, "groundspawn", 11) == 0 || strnicmp(type, "harvestable", 10) == 0 || strnicmp(type, "collection", 10) == 0);
+}
+
+static bool IsPlacementCollectionType(const char* type) {
+	return type && strnicmp(type, "collection", 10) == 0;
+}
+
+static bool IsGroundSpawnSkillName(const char* name) {
+	if (!name || !name[0])
+		return false;
+
+	return stricmp(name, "Unused") == 0 ||
+		stricmp(name, "Mining") == 0 ||
+		stricmp(name, "Gathering") == 0 ||
+		stricmp(name, "Fishing") == 0 ||
+		stricmp(name, "Trapping") == 0 ||
+		stricmp(name, "Foresting") == 0 ||
+		stricmp(name, "Collecting") == 0;
+}
+
+static Spawn* CreatePlacementPreviewSpawn(Client* client, Seperator* sep) {
+	const char* type = (sep && sep->arg[0][0]) ? sep->arg[0] : "object";
+	int32 model = (sep && sep->IsNumber(1)) ? atoul(sep->arg[1]) : 1472;
+	int8 class_id = (sep && sep->IsNumber(2)) ? atoi(sep->arg[2]) : 1;
+	int16 level = (sep && sep->IsNumber(3)) ? atoi(sep->arg[3]) : 1;
+	const char* name = (sep && sep->arg[4][0]) ? sep->argplus[4] : "Placement Preview";
+	Spawn* spawn = 0;
+
+	if (strnicmp(type, "npc", 3) == 0) {
+		spawn = new NPC();
+		memset(&spawn->appearance, 0, sizeof(spawn->appearance));
+		spawn->SetAdventureClass(class_id);
+		spawn->SetLevel(level);
+		spawn->SetShowLevel(1, false);
+		spawn->SetTotalHP(25 * level + 1);
+		spawn->SetHP(25 * level + 1);
+		spawn->SetTotalPower(25 * level + 1);
+		spawn->SetPower(25 * level + 1);
+		spawn->appearance.pos.collision_radius = 32;
+	}
+	else if (IsPlacementGroundSpawnType(type)) {
+		GroundSpawn* ground = new GroundSpawn();
+		spawn = ground;
+		memset(&spawn->appearance, 0, sizeof(spawn->appearance));
+		spawn->SetShowHandIcon(1, false);
+
+		int32 groundspawn_id = (sep && sep->IsNumber(2)) ? atoul(sep->arg[2]) : 0;
+		const char* collection_skill = IsPlacementCollectionType(type) ? "Collecting" : "Unused";
+		int name_arg = 4;
+
+		if (sep && sep->arg[3][0]) {
+			if (IsGroundSpawnSkillName(sep->arg[3]))
+				collection_skill = sep->arg[3];
+			else
+				name_arg = 3;
+		}
+
+		if (sep && sep->arg[name_arg][0])
+			name = sep->argplus[name_arg];
+
+		ground->SetNumberHarvests(3);
+		ground->SetAttemptsPerHarvest(1);
+		ground->SetGroundSpawnEntryID(groundspawn_id);
+		ground->SetCollectionSkill(collection_skill);
+	}
+	else if (strnicmp(type, "sign", 4) == 0) {
+		Sign* sign = new Sign();
+		spawn = sign;
+		memset(&spawn->appearance, 0, sizeof(spawn->appearance));
+		sign->SetSignType(SIGN_TYPE_GENERIC);
+		sign->SetSignDistance(20.0f);
+		sign->SetIncludeLocation(1);
+		sign->SetIncludeHeading(1);
+		sign->SetSignTitle(name);
+		sign->SetActivityStatus(64);
+		sign->SetWidgetX(client->GetPlayer()->GetX());
+		sign->SetWidgetY(client->GetPlayer()->GetY());
+		sign->SetWidgetZ(client->GetPlayer()->GetZ());
+	}
+	else {
+		spawn = new Object();
+		memset(&spawn->appearance, 0, sizeof(spawn->appearance));
+	}
+
+	if (!spawn)
+		return 0;
+
+	ResetPlacementSpawnIds(spawn);
+	spawn->SetName(name, false);
+	spawn->SetModelType(model, false);
+	spawn->SetRace(255, false);
+	spawn->SetTargetable(1, false);
+	spawn->SetAttackable(0, false);
+	spawn->SetShowName(1, false);
+	spawn->SetLocation(client->GetPlayer()->GetLocation());
+	PlaceSpawnAtClient(client, spawn);
+	return spawn;
+}
+
+static Spawn* ClonePlacementPreviewSpawn(Spawn* target) {
+	if (!target || target->IsPlayer())
+		return 0;
+
+	Spawn* clone = 0;
+	if (target->IsNPC())
+		clone = new NPC((NPC*)target);
+	else if (target->IsWidget())
+		clone = ((Widget*)target)->Copy();
+	else if (target->IsObject())
+		clone = ((Object*)target)->Copy();
+	else if (target->IsSign())
+		clone = ((Sign*)target)->Copy();
+	else if (target->IsGroundSpawn())
+		clone = ((GroundSpawn*)target)->Copy();
+
+	if (clone)
+		ResetPlacementSpawnIds(clone);
+
+	return clone;
+}
+
+static void StartPlacementPreview(Client* client, Spawn* spawn) {
+	client->ClearDevPlacementPreview();
+	client->GetCurrentZone()->AddSpawn(spawn);
+	client->SetDevPlacementPreviewSpawn(spawn);
+	client->SendMoveObjectMode(spawn, 0);
+}
+
+void Commands::Command_DevMode(Client* client, Seperator* sep) {
+	if (!PlacementCommandAllowed(client))
+		return;
+
+	if (sep && sep->arg[0][0] && stricmp(sep->arg[0], "on") == 0) {
+		client->SetDevPlacementMode(true);
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Dev placement mode enabled.");
+	}
+	else if (sep && sep->arg[0][0] && stricmp(sep->arg[0], "off") == 0) {
+		client->SetDevPlacementMode(false);
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Dev placement mode disabled.");
+	}
+	else {
+		client->Message(CHANNEL_COLOR_YELLOW, "[PlacementMode] Dev placement mode is %s.", client->IsDevPlacementMode() ? "on" : "off");
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Usage: /devmode on|off");
+	}
+}
+
+void Commands::Command_SpawnPreview(Client* client, Seperator* sep) {
+	if (!PlacementCommandAllowed(client))
+		return;
+	if (!client->IsDevPlacementMode()) {
+		client->SimpleMessage(CHANNEL_COLOR_RED, "Use /devmode on before creating placement previews.");
+		return;
+	}
+
+	if (sep && sep->arg[0][0] && (stricmp(sep->arg[0], "cancel") == 0 || stricmp(sep->arg[0], "delete") == 0)) {
+		client->ClearDevPlacementPreview();
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Preview removed.");
+		return;
+	}
+
+	if (sep && sep->arg[0][0] && (stricmp(sep->arg[0], "clone") == 0 || stricmp(sep->arg[0], "target") == 0)) {
+		Command_SpawnClone(client, sep);
+		return;
+	}
+
+	Spawn* preview = CreatePlacementPreviewSpawn(client, sep);
+	if (!preview) {
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Usage: /spawnpreview [object|npc|sign|groundspawn|harvestable|collection] [model] [type args...] [name]");
+		return;
+	}
+
+	StartPlacementPreview(client, preview);
+	client->SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Preview created. Move it in-world, then use /spawnsave.");
+}
+
+void Commands::Command_SpawnSave(Client* client, Seperator* sep) {
+	if (!PlacementCommandAllowed(client))
+		return;
+	if (!client->IsDevPlacementMode()) {
+		client->SimpleMessage(CHANNEL_COLOR_RED, "Use /devmode on before saving placements.");
+		return;
+	}
+
+	Spawn* preview = client->GetDevPlacementPreviewSpawn();
+	int8 percent = 100;
+	const char* location_name = "Dev Placement";
+
+	if (sep && sep->arg[0][0]) {
+		if (sep->IsNumber(0))
+			percent = atoi(sep->arg[0]);
+		else
+			location_name = sep->argplus[0];
+	}
+	if (sep && sep->arg[1][0] && sep->IsNumber(1))
+		percent = atoi(sep->arg[1]);
+
+	if (preview) {
+		if (client->SaveDevPlacementPreview(location_name, percent)) {
+			client->Message(CHANNEL_COLOR_YELLOW, "[PlacementMode] Saved placement '%s' with spawn db id %u, location id %u, placement id %u.",
+				location_name, preview->GetDatabaseID(), preview->GetSpawnLocationID(), preview->GetSpawnLocationPlacementID());
+		}
+		else {
+			client->SimpleMessage(CHANNEL_COLOR_RED, "[PlacementMode] Error saving preview placement, see console window for details.");
+		}
+		return;
+	}
+
+	Spawn* target = client->GetPlayer()->GetTarget();
+	if (target && !target->IsPlayer() && target->GetSpawnLocationPlacementID() > 0) {
+		if (database.UpdateSpawnLocationSpawns(target))
+			client->Message(CHANNEL_COLOR_YELLOW, "[PlacementMode] Updated existing placement id %u for '%s'.", target->GetSpawnLocationPlacementID(), target->GetName());
+		else
+			client->SimpleMessage(CHANNEL_COLOR_RED, "[PlacementMode] Error updating existing placement, see console window for details.");
+	}
+	else {
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "No preview exists. Use /spawnpreview first or target an existing persisted spawn.");
+	}
+}
+
+void Commands::Command_SpawnClone(Client* client, Seperator* sep) {
+	if (!PlacementCommandAllowed(client))
+		return;
+	if (!client->IsDevPlacementMode()) {
+		client->SimpleMessage(CHANNEL_COLOR_RED, "Use /devmode on before cloning placements.");
+		return;
+	}
+
+	Spawn* target = client->GetPlayer()->GetTarget();
+	Spawn* clone = ClonePlacementPreviewSpawn(target);
+	if (!clone) {
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Target a non-player spawn, then use /spawnclone [name].");
+		return;
+	}
+
+	if (sep && sep->arg[0][0] && (stricmp(sep->arg[0], "clone") == 0 || stricmp(sep->arg[0], "target") == 0) && sep->arg[1][0])
+		clone->SetName(sep->argplus[1], false);
+	else if (sep && sep->arg[0][0] && stricmp(sep->arg[0], "clone") != 0 && stricmp(sep->arg[0], "target") != 0)
+		clone->SetName(sep->argplus[0], false);
+
+	PlaceSpawnAtClient(client, clone);
+	StartPlacementPreview(client, clone);
+	client->SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Clone preview created. Move it in-world, then use /spawnsave.");
+}
+
+void Commands::Command_SpawnDelete(Client* client, Seperator* sep) {
+	if (!PlacementCommandAllowed(client))
+		return;
+	if (!client->IsDevPlacementMode()) {
+		client->SimpleMessage(CHANNEL_COLOR_RED, "Use /devmode on before deleting placements.");
+		return;
+	}
+
+	if (client->GetDevPlacementPreviewSpawn()) {
+		client->ClearDevPlacementPreview();
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Preview discarded.");
+		return;
+	}
+
+	Spawn* target = client->GetPlayer()->GetTarget();
+	if (target && !target->IsPlayer() && target->GetSpawnLocationPlacementID() > 0) {
+		string name = string(target->GetName());
+		int32 placement_id = target->GetSpawnLocationPlacementID();
+		if (database.RemoveSpawnPlacement(target)) {
+			client->GetCurrentZone()->RemoveSpawn(target, true, false, true, true, true);
+			client->Message(CHANNEL_COLOR_YELLOW, "[PlacementMode] Deleted placement id %u for '%s'.", placement_id, name.c_str());
+		}
+		else {
+			client->SimpleMessage(CHANNEL_COLOR_RED, "[PlacementMode] Error deleting placement, see console window for details.");
+		}
+	}
+	else {
+		client->SimpleMessage(CHANNEL_COLOR_YELLOW, "Target a persisted non-player spawn or keep an active preview to discard.");
+	}
+}
 
 
 /* 

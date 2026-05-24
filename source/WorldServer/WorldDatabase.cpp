@@ -505,6 +505,20 @@ void WorldDatabase::LoadSubCommandList()
 	LogWrite(COMMAND__DEBUG, 3, "Command", "--Loaded %i Subcommand(s)", total);
 }
 
+static void EnsureRemoteCommand(const char* name, int32 handler, sint16 required_status) {
+	RemoteCommands* remote = commands.GetRemoteCommands();
+	for (size_t i = 0; i < remote->commands.size(); i++) {
+		if (remote->commands[i].command.size > 0 && stricmp(remote->commands[i].command.data.c_str(), name) == 0)
+			return;
+	}
+
+	while (remote->commands.size() < (size_t)handler)
+		remote->addZero();
+
+	remote->addCommand(EQ2_RemoteCommandString((char*)name, handler, required_status));
+	LogWrite(COMMAND__DEBUG, 3, "Command", "--Added fallback command '%s', handler %u status %i", name, handler, required_status);
+}
+
 void WorldDatabase::LoadCommandList() 
 {
 	Query query;
@@ -527,6 +541,11 @@ void WorldDatabase::LoadCommandList()
 	}
 	LogWrite(COMMAND__DEBUG, 3, "Command", "--Loaded %i Command%s", index, index > 0 ? "s" : "");
 	LoadSubCommandList();
+	EnsureRemoteCommand("devmode", COMMAND_DEVMODE, 100);
+	EnsureRemoteCommand("spawnpreview", COMMAND_SPAWNPREVIEW, 100);
+	EnsureRemoteCommand("spawnsave", COMMAND_SPAWNSAVE, 100);
+	EnsureRemoteCommand("spawnclone", COMMAND_SPAWNCLONE, 100);
+	EnsureRemoteCommand("spawndelete", COMMAND_SPAWNDELETE, 100);
 }
 
 int32 WorldDatabase::LoadNPCSpells(){
@@ -3863,7 +3882,12 @@ bool WorldDatabase::SaveSpawnInfo(Spawn* spawn){
 
 		}
 		else if (spawn->IsGroundSpawn()) {
-			query.RunQuery2(Q_INSERT, "insert into spawn_ground%s (spawn_id) values(%u)", houseTable.c_str(), spawn->GetDatabaseID());
+			GroundSpawn* ground = (GroundSpawn*)spawn;
+			string collection_skill = getSafeEscapeString(ground->GetCollectionSkill());
+			if (collection_skill.length() == 0)
+				collection_skill = "Unused";
+			query.RunQuery2(Q_INSERT, "insert into spawn_ground%s (spawn_id, number_harvests, num_attempts_per_harvest, groundspawn_id, collection_skill, randomize_heading) values(%u, %i, %i, %u, '%s', %u)",
+				houseTable.c_str(), spawn->GetDatabaseID(), ground->GetNumberHarvests(), ground->GetAttemptsPerHarvest(), ground->GetGroundSpawnEntryID(), collection_skill.c_str(), ground->GetRandomizeHeading() ? 1 : 0);
 		}
 	}
 	else{
@@ -3907,6 +3931,17 @@ bool WorldDatabase::SaveSpawnInfo(Spawn* spawn){
 				sign->GetIconValue(), sign->GetSignDescription(), sign->GetSignDistance(), sign->GetSignZoneX(), 
 				sign->GetSignZoneY(), sign->GetSignZoneZ(), sign->GetSignZoneHeading(), sign->GetIncludeHeading(), 
 				sign->GetIncludeLocation(), spawn->GetMerchantMinLevel(), spawn->GetMerchantMaxLevel(), sign->GetLanguage(), houseTable.c_str(), spawn->GetDatabaseID());
+		}
+		else if (spawn->IsGroundSpawn()) {
+			GroundSpawn* ground = (GroundSpawn*)spawn;
+			string collection_skill = getSafeEscapeString(ground->GetCollectionSkill());
+			if (collection_skill.length() == 0)
+				collection_skill = "Unused";
+			query.RunQuery2(Q_UPDATE, "update spawn_ground%s, spawn set name='%s', race=%i, model_type=%i, show_name=%i, attackable=%i, show_level=%i, show_command_icon=%i, display_hand_icon=%i, size=%i, hp=%u, power=%u, collision_radius=%i, command_primary=%u, command_secondary=%u, visual_state=%i, faction_id=%u, suffix ='%s', prefix='%s', last_name='%s', number_harvests=%i, num_attempts_per_harvest=%i, groundspawn_id=%u, collection_skill='%s', randomize_heading=%u, merchant_min_level = %u, merchant_max_level = %u where spawn_ground%s.spawn_id = spawn.id and spawn.id = %u",
+				houseTable.c_str(), name.c_str(), spawn->GetRace(), spawn->GetModelType(), spawn->appearance.display_name, spawn->appearance.attackable, spawn->appearance.show_level, spawn->appearance.show_command_icon, spawn->appearance.display_hand_icon, spawn->GetSize(),
+				spawn->GetTotalHP(), spawn->GetTotalPower(), spawn->GetCollisionRadius(), spawn->GetPrimaryCommandListID(), spawn->GetSecondaryCommandListID(), spawn->GetVisualState(), spawn->GetFactionID(),
+				suffix.c_str(), prefix.c_str(), last_name.c_str(), ground->GetNumberHarvests(), ground->GetAttemptsPerHarvest(), ground->GetGroundSpawnEntryID(), collection_skill.c_str(), ground->GetRandomizeHeading() ? 1 : 0,
+				spawn->GetMerchantMinLevel(), spawn->GetMerchantMaxLevel(), houseTable.c_str(), spawn->GetDatabaseID());
 		}
 	}
 	if(query.GetErrorNumber() && query.GetError() && query.GetErrorNumber() < 0xFFFFFFFF){
@@ -4120,6 +4155,131 @@ bool WorldDatabase::RemoveSpawnFromSpawnLocation(Spawn* spawn){
 		LogWrite(SPAWN__ERROR, 0, "Spawn", "Error in RemoveSpawnFromSpawnLocation query '%s': %s", query2.GetQuery(), query.GetError());
 		return false;
 	}
+	return true;
+}
+
+static bool PlacementDeleteQueryFailed(Query& query, const char* context) {
+	if(query.GetErrorNumber() && query.GetError() && query.GetErrorNumber() < 0xFFFFFFFF){
+		LogWrite(SPAWN__ERROR, 0, "Spawn", "Error in %s query '%s': %s", context, query.GetQuery(), query.GetError());
+		return true;
+	}
+	return false;
+}
+
+bool WorldDatabase::RemoveSpawnPlacement(Spawn* spawn){
+	if(!spawn || spawn->GetSpawnLocationPlacementID() == 0 || spawn->GetSpawnLocationID() == 0)
+		return false;
+
+	Query query;
+	Query query2;
+	Query query3;
+	Query query4;
+	Query query5;
+	Query query6;
+	Query query7;
+	Query query8;
+	Query query9;
+	Query query10;
+	Query query11;
+	Query query12;
+	int32 remainingPlacements = 0;
+	int32 remainingEntriesForSpawn = 0;
+	int32 spawnID = spawn->GetDatabaseID();
+	int32 locationID = spawn->GetSpawnLocationID();
+	int32 placementID = spawn->GetSpawnLocationPlacementID();
+
+	int8 isInstanceType = (spawn && spawn->GetZone() && spawn->GetZone()->GetInstanceType() == Instance_Type::PERSONAL_HOUSE_INSTANCE);
+	std::string houseTable("");
+	if(isInstanceType) {
+		houseTable.append("_houses");
+	}
+
+	query.RunQuery2(Q_DELETE, "delete FROM persisted_respawns where zone_id=%u and spawn_location_entry_id=%u", spawn->GetZone() ? spawn->GetZone()->GetZoneID() : 0, locationID);
+	if(PlacementDeleteQueryFailed(query, "RemoveSpawnPlacement"))
+		return false;
+
+	query2.RunQuery2(Q_DELETE, "delete FROM spawn_location_group where placement_id=%u", placementID);
+	if(PlacementDeleteQueryFailed(query2, "RemoveSpawnPlacement"))
+		return false;
+
+	query3.RunQuery2(Q_DELETE, "delete FROM spawn_location_placement%s where id=%u", houseTable.c_str(), placementID);
+	if(PlacementDeleteQueryFailed(query3, "RemoveSpawnPlacement"))
+		return false;
+
+	MYSQL_RES* result = query4.RunQuery2(Q_SELECT, "SELECT count(id) FROM spawn_location_placement%s where spawn_location_id=%u", houseTable.c_str(), locationID);
+	if(result && mysql_num_rows(result) > 0){
+		MYSQL_ROW row;
+		while(result && (row = mysql_fetch_row(result)) && row[0]){
+			remainingPlacements = strtoul(row[0], NULL, 0);
+		}
+	}
+
+	if(remainingPlacements == 0) {
+		query5.RunQuery2(Q_DELETE, "delete FROM spawn_location_entry%s where spawn_location_id = %u", houseTable.c_str(), locationID);
+		if(PlacementDeleteQueryFailed(query5, "RemoveSpawnPlacement"))
+			return false;
+
+		query6.RunQuery2(Q_DELETE, "delete FROM spawn_location_name%s where id=%u", houseTable.c_str(), locationID);
+		if(PlacementDeleteQueryFailed(query6, "RemoveSpawnPlacement"))
+			return false;
+	}
+
+	if(spawnID > 0) {
+		MYSQL_RES* entryResult = query7.RunQuery2(Q_SELECT, "SELECT count(id) FROM spawn_location_entry%s where spawn_id=%u", houseTable.c_str(), spawnID);
+		if(entryResult && mysql_num_rows(entryResult) > 0){
+			MYSQL_ROW row;
+			while(entryResult && (row = mysql_fetch_row(entryResult)) && row[0]){
+				remainingEntriesForSpawn = strtoul(row[0], NULL, 0);
+			}
+		}
+
+		if(remainingEntriesForSpawn == 0) {
+			query8.RunQuery2(Q_DELETE, "delete FROM spawn_instance_data where spawn_id=%u", spawnID);
+			if(PlacementDeleteQueryFailed(query8, "RemoveSpawnPlacement"))
+				return false;
+
+			query9.RunQuery2(Q_DELETE, "delete FROM spawn_scripts where spawn_id=%u", spawnID);
+			if(PlacementDeleteQueryFailed(query9, "RemoveSpawnPlacement"))
+				return false;
+
+			query10.RunQuery2(Q_DELETE,
+				"delete spawn%s, spawn_npcs%s, spawn_objects%s, spawn_widgets%s, spawn_signs%s, spawn_ground%s "
+				"FROM spawn%s "
+				"left join spawn_npcs%s on spawn_npcs%s.spawn_id = spawn%s.id "
+				"left join spawn_objects%s on spawn_objects%s.spawn_id = spawn%s.id "
+				"left join spawn_widgets%s on spawn_widgets%s.spawn_id = spawn%s.id "
+				"left join spawn_signs%s on spawn_signs%s.spawn_id = spawn%s.id "
+				"left join spawn_ground%s on spawn_ground%s.spawn_id = spawn%s.id "
+				"where spawn%s.id=%u",
+				houseTable.c_str(), houseTable.c_str(), houseTable.c_str(), houseTable.c_str(), houseTable.c_str(), houseTable.c_str(),
+				houseTable.c_str(),
+				houseTable.c_str(), houseTable.c_str(), houseTable.c_str(),
+				houseTable.c_str(), houseTable.c_str(), houseTable.c_str(),
+				houseTable.c_str(), houseTable.c_str(), houseTable.c_str(),
+				houseTable.c_str(), houseTable.c_str(), houseTable.c_str(),
+				houseTable.c_str(), houseTable.c_str(), houseTable.c_str(),
+				houseTable.c_str(), spawnID);
+			if(PlacementDeleteQueryFailed(query10, "RemoveSpawnPlacement"))
+				return false;
+
+			if(spawn->IsNPC()) {
+				query11.RunQuery2(Q_DELETE, "delete FROM spawn_npc_equipment where spawn_id=%u", spawnID);
+				if(PlacementDeleteQueryFailed(query11, "RemoveSpawnPlacement"))
+					return false;
+				query12.RunQuery2(Q_DELETE, "delete FROM spawn_npc_skills where spawn_id=%u", spawnID);
+				if(PlacementDeleteQueryFailed(query12, "RemoveSpawnPlacement"))
+					return false;
+			}
+		}
+	}
+
+	if(spawnID > 0 && remainingEntriesForSpawn == 0) {
+		spawn->SetDatabaseID(0);
+	}
+	spawn->SetSpawnLocationID(0);
+	spawn->SetSpawnLocationPlacementID(0);
+	spawn->SetSpawnEntryID(0);
+
 	return true;
 }
 

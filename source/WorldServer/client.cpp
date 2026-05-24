@@ -219,8 +219,10 @@ Client::Client(EQStream* ieqs) : underworld_cooldown_timer(5000), zone_enter_tim
 	delayedAccessKey = 0;
 	delayTimer.Disable();
 	tempPlacementSpawn = nullptr;
+	devPlacementPreviewSpawn = nullptr;
 	placement_unique_item_id = 0;
 	SetHasOwnerOrEditAccess(false);
+	devPlacementMode = false;
 	temporary_transport_id = 0;
 	rejoin_group_id = 0;
 	lastRegionRemapTime = 0;
@@ -298,6 +300,7 @@ void Client::RemoveClientFromZone() {
 		SetTempPlacementSpawn(nullptr);
 		GetCurrentZone()->RemoveSpawn(tmp, true, false, true, true, true);
 	}
+	ClearDevPlacementPreview();
 
 	if (current_zone && player) {
 		if (player->GetGroupMemberInfo()) {
@@ -1473,6 +1476,12 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 	}
 	case OP_CancelMoveObjectModeMsg: {
 		SetSpawnPlacementMode(Client::ServerSpawnPlacementMode::DEFAULT);
+		if (GetDevPlacementPreviewSpawn() && GetCurrentZone())
+		{
+			ClearDevPlacementPreview();
+			SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Preview cancelled.");
+			break;
+		}
 		if (GetTempPlacementSpawn() && GetCurrentZone())
 		{
 			Spawn* tmp = GetTempPlacementSpawn();
@@ -1490,8 +1499,13 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 		PacketStruct* place_object = configReader.getStruct("WS_PlaceMoveableObject", GetVersion());
 		if (place_object && place_object->LoadPacketData(app->pBuffer, app->size) && GetCurrentZone()) {
 			Spawn* spawn = 0;
+			bool was_dev_preview = false;
 			bool was_temp_placement = false;
-			if (GetTempPlacementSpawn()) {
+			if (GetDevPlacementPreviewSpawn()) {
+				spawn = GetDevPlacementPreviewSpawn();
+				was_dev_preview = true;
+			}
+			else if (GetTempPlacementSpawn()) {
 				spawn = GetTempPlacementSpawn();
 				was_temp_placement = true;
 			}
@@ -1509,66 +1523,9 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 			}
 
 
-			int32 uniqueID = spawn->GetPickupUniqueItemID();
-			if (uniqueID) {
-				Item* uniqueItem = GetPlayer()->item_list.GetItemFromUniqueID(uniqueID);
-				if (uniqueItem && uniqueItem->CheckFlag2(HOUSE_LORE) && GetCurrentZone()->HouseItemSpawnExists(uniqueItem->details.item_id)) {
-					Message(CHANNEL_COLOR_RED, "Item %s is house lore and you cannot place another.", uniqueItem->name.c_str());
-					break;
-				}
-			}
-
-			// handles instantiation logic + adding to zone of a new house object
-			PopulateHouseSpawn(place_object);
-
 			float newHeading = place_object->getType_float_ByName("heading") + 180;
 
-			char query[256];
-
-			switch (GetSpawnPlacementMode())
-			{
-			case ServerSpawnPlacementMode::OPEN_HEADING:
-			{
-				if (spawn && spawn->IsWidget())
-				{
-					Widget* widget = (Widget*)spawn;
-					widget->SetOpenHeading(newHeading);
-					widget->SetIncludeHeading(true);
-
-					spawn->position_changed = true;
-
-					_snprintf(query, 256, "open_heading=%f,include_heading=1", newHeading);
-					if (database.UpdateSpawnWidget(widget->GetWidgetID(), query, GetCurrentZone()->GetInstanceType() == Instance_Type::PERSONAL_HOUSE_INSTANCE))
-						SimpleMessage(CHANNEL_COLOR_YELLOW, "Successfully saved widget open heading information.");
-				}
-				else
-					SimpleMessage(CHANNEL_COLOR_YELLOW, "Spawn is not widget, unable to set close heading information.");
-				break;
-			}
-			case ServerSpawnPlacementMode::CLOSE_HEADING:
-			{
-				if (spawn && spawn->IsWidget())
-				{
-					Widget* widget = (Widget*)spawn;
-					widget->SetClosedHeading(newHeading);
-					widget->SetIncludeHeading(true);
-
-					spawn->position_changed = true;
-					_snprintf(query, 256, "closed_heading=%f,include_heading=1", newHeading);
-					if (database.UpdateSpawnWidget(widget->GetWidgetID(), query, GetCurrentZone()->GetInstanceType() == Instance_Type::PERSONAL_HOUSE_INSTANCE))
-						SimpleMessage(CHANNEL_COLOR_YELLOW, "Successfully saved widget close heading information.");
-
-					if (spawn->GetSpawnLocationID())
-					{
-						Query query;
-						query.RunQuery2(Q_INSERT, "update spawn_location_placement set heading = %f where id = %u", newHeading, spawn->GetSpawnLocationID());
-					}
-				}
-				else
-					SimpleMessage(CHANNEL_COLOR_YELLOW, "Spawn is not widget, unable to set close heading information.");
-				break;
-			}
-			default:
+			if (was_dev_preview)
 			{
 				spawn->SetX(place_object->getType_float_ByName("x"));
 				spawn->SetY(place_object->getType_float_ByName("y"));
@@ -1578,18 +1535,92 @@ bool Client::HandlePacket(EQApplicationPacket* app) {
 				spawn->SetSpawnOrigY(spawn->GetY());
 				spawn->SetSpawnOrigZ(spawn->GetZ());
 				spawn->SetSpawnOrigHeading(spawn->GetHeading());
-				if (spawn->GetSpawnLocationID() > 0 && database.UpdateSpawnLocationSpawns(spawn)) {
-					if (!was_temp_placement) {
-						SimpleMessage(CHANNEL_COLOR_YELLOW, "Successfully saved spawn information.");
+				spawn->position_changed = true;
+				GetCurrentZone()->SendSpawnChanges(spawn, this);
+				SimpleMessage(CHANNEL_COLOR_YELLOW, "[PlacementMode] Preview position updated. Use /spawnsave to persist or /spawndelete to discard.");
+			}
+			else
+			{
+				int32 uniqueID = spawn->GetPickupUniqueItemID();
+				if (uniqueID) {
+					Item* uniqueItem = GetPlayer()->item_list.GetItemFromUniqueID(uniqueID);
+					if (uniqueItem && uniqueItem->CheckFlag2(HOUSE_LORE) && GetCurrentZone()->HouseItemSpawnExists(uniqueItem->details.item_id)) {
+						Message(CHANNEL_COLOR_RED, "Item %s is house lore and you cannot place another.", uniqueItem->name.c_str());
+						break;
 					}
 				}
-				else if (spawn->GetSpawnLocationID() > 0) {
-					SimpleMessage(CHANNEL_COLOR_YELLOW, "Error saving spawn information, see console window for details.");
-				}
-			}
-			}
 
-			PopulateHouseSpawnFinalize();
+				// handles instantiation logic + adding to zone of a new house object
+				PopulateHouseSpawn(place_object);
+
+				char query[256];
+
+				switch (GetSpawnPlacementMode())
+				{
+				case ServerSpawnPlacementMode::OPEN_HEADING:
+				{
+					if (spawn && spawn->IsWidget())
+					{
+						Widget* widget = (Widget*)spawn;
+						widget->SetOpenHeading(newHeading);
+						widget->SetIncludeHeading(true);
+
+						spawn->position_changed = true;
+
+						_snprintf(query, 256, "open_heading=%f,include_heading=1", newHeading);
+						if (database.UpdateSpawnWidget(widget->GetWidgetID(), query, GetCurrentZone()->GetInstanceType() == Instance_Type::PERSONAL_HOUSE_INSTANCE))
+							SimpleMessage(CHANNEL_COLOR_YELLOW, "Successfully saved widget open heading information.");
+					}
+					else
+						SimpleMessage(CHANNEL_COLOR_YELLOW, "Spawn is not widget, unable to set close heading information.");
+					break;
+				}
+				case ServerSpawnPlacementMode::CLOSE_HEADING:
+				{
+					if (spawn && spawn->IsWidget())
+					{
+						Widget* widget = (Widget*)spawn;
+						widget->SetClosedHeading(newHeading);
+						widget->SetIncludeHeading(true);
+
+						spawn->position_changed = true;
+						_snprintf(query, 256, "closed_heading=%f,include_heading=1", newHeading);
+						if (database.UpdateSpawnWidget(widget->GetWidgetID(), query, GetCurrentZone()->GetInstanceType() == Instance_Type::PERSONAL_HOUSE_INSTANCE))
+							SimpleMessage(CHANNEL_COLOR_YELLOW, "Successfully saved widget close heading information.");
+
+						if (spawn->GetSpawnLocationID())
+						{
+							Query query;
+							query.RunQuery2(Q_INSERT, "update spawn_location_placement set heading = %f where id = %u", newHeading, spawn->GetSpawnLocationID());
+						}
+					}
+					else
+						SimpleMessage(CHANNEL_COLOR_YELLOW, "Spawn is not widget, unable to set close heading information.");
+					break;
+				}
+				default:
+				{
+					spawn->SetX(place_object->getType_float_ByName("x"));
+					spawn->SetY(place_object->getType_float_ByName("y"));
+					spawn->SetZ(place_object->getType_float_ByName("z"));
+					spawn->SetHeading(newHeading);
+					spawn->SetSpawnOrigX(spawn->GetX());
+					spawn->SetSpawnOrigY(spawn->GetY());
+					spawn->SetSpawnOrigZ(spawn->GetZ());
+					spawn->SetSpawnOrigHeading(spawn->GetHeading());
+					if (spawn->GetSpawnLocationID() > 0 && database.UpdateSpawnLocationSpawns(spawn)) {
+						if (!was_temp_placement) {
+							SimpleMessage(CHANNEL_COLOR_YELLOW, "Successfully saved spawn information.");
+						}
+					}
+					else if (spawn->GetSpawnLocationID() > 0) {
+						SimpleMessage(CHANNEL_COLOR_YELLOW, "Error saving spawn information, see console window for details.");
+					}
+				}
+				}
+
+				PopulateHouseSpawnFinalize();
+			}
 
 			SetSpawnPlacementMode(Client::ServerSpawnPlacementMode::DEFAULT);
 		}
@@ -13316,6 +13347,59 @@ void Client::SetTempPlacementSpawn(Spawn* tmp) {
 		temp_placement_timer.Start();
 	else
 		temp_placement_timer.Disable();
+}
+
+void Client::SetDevPlacementMode(bool enabled) {
+	devPlacementMode = enabled;
+	if (!devPlacementMode)
+		ClearDevPlacementPreview();
+}
+
+void Client::SetDevPlacementPreviewSpawn(Spawn* spawn) {
+	if (!spawn) {
+		devPlacementPreviewSpawn = nullptr;
+		return;
+	}
+
+	if (devPlacementPreviewSpawn && devPlacementPreviewSpawn != spawn)
+		ClearDevPlacementPreview();
+
+	devPlacementPreviewSpawn = spawn;
+}
+
+void Client::ClearDevPlacementPreview() {
+	if (devPlacementPreviewSpawn && GetCurrentZone()) {
+		Spawn* preview = devPlacementPreviewSpawn;
+		devPlacementPreviewSpawn = nullptr;
+		GetCurrentZone()->RemoveSpawn(preview, true, false, true, true, true);
+	}
+	else {
+		devPlacementPreviewSpawn = nullptr;
+	}
+}
+
+bool Client::SaveDevPlacementPreview(const char* locationName, int8 percent) {
+	Spawn* preview = GetDevPlacementPreviewSpawn();
+	if (!preview || !GetCurrentZone())
+		return false;
+
+	if (percent <= 0)
+		percent = 100;
+
+	const char* resolvedName = locationName && locationName[0] ? locationName : "Dev Placement";
+	bool isInstanceType = GetCurrentZone()->GetInstanceType() == Instance_Type::PERSONAL_HOUSE_INSTANCE;
+
+	if (preview->GetDatabaseID() == 0 && !database.SaveSpawnInfo(preview))
+		return false;
+
+	if (preview->GetSpawnLocationID() == 0)
+		preview->SetSpawnLocationID(database.GetNextSpawnLocation(isInstanceType));
+
+	if (!database.SaveSpawnEntry(preview, resolvedName, percent, 0, 0, 0))
+		return false;
+
+	devPlacementPreviewSpawn = nullptr;
+	return true;
 }
 
 void Client::SetPlayer(Player* new_player) {

@@ -467,6 +467,11 @@ public:
 	void Command_RaidSay(Client* client, Seperator* sep);
 	
 	void Command_ReloadZoneInfo(Client* client, Seperator* sep);
+	void Command_DevMode(Client* client, Seperator* sep);
+	void Command_SpawnPreview(Client* client, Seperator* sep);
+	void Command_SpawnSave(Client* client, Seperator* sep);
+	void Command_SpawnClone(Client* client, Seperator* sep);
+	void Command_SpawnDelete(Client* client, Seperator* sep);
 	void Command_SetLocationEntry(Client* client, Seperator* sep);
 	void Command_StoreListItem(Client* client, Seperator* sep);
 	void Command_StoreSetPrice(Client* client, Seperator* sep);
@@ -1015,5 +1020,10 @@ private:
 #define COMMAND_MODIFY_ZONE			1009
 
 #define COMMAND_RELOAD_ZONEINFO		1010
+#define COMMAND_DEVMODE				1011
+#define COMMAND_SPAWNPREVIEW			1012
+#define COMMAND_SPAWNSAVE			1013
+#define COMMAND_SPAWNCLONE			1014
+#define COMMAND_SPAWNDELETE			1015
 
 #endif

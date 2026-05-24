@@ -1619,6 +1619,7 @@ bool ZoneServer::Process()
 				}
 
 			if (reloading) {
+				DeleteGlobalSpawns();
 				LogWrite(COMMAND__DEBUG, 0, "Command", "-Loading Entity Commands...");
 				database.LoadEntityCommands(this);
 				LogWrite(NPC__INFO, 0, "NPC", "-Loading Spirit Shard data...");
@@ -1841,11 +1842,11 @@ bool ZoneServer::Process()
 			RegenUpdate();
 
 		// respawn_timers loop
-		if(respawn_timer.Check() && !zoneShuttingDown)
+		if(!reloading && !LoadingData && respawn_timer.Check() && !zoneShuttingDown)
 			CheckRespawns();
 
 		// spawn_expire_timers loop
-		if (spawn_expire_timer.Check() && !zoneShuttingDown)
+		if (!reloading && !LoadingData && spawn_expire_timer.Check() && !zoneShuttingDown)
 			CheckSpawnExpireTimers();
 
 		// widget_timers loop
@@ -4744,6 +4745,8 @@ void ZoneServer::RemoveSpawn(Spawn* spawn, bool delete_spawn, bool respawn, bool
 				client->SetTransportSpawnID(0);
 			if(client->GetTempPlacementSpawn() == spawn)
 				client->SetTempPlacementSpawn(nullptr);
+			if(client->GetDevPlacementPreviewSpawn() == spawn)
+				client->SetDevPlacementPreviewSpawn(nullptr);
 			if(client->GetCombineSpawn() == spawn)
 				client->SetCombineSpawn(nullptr);
 
@@ -8796,7 +8799,6 @@ void ZoneServer::ReloadSpawns() {
 	world.SetReloadingSubsystem("Spawns");
 	// Let every one in the zone know what is happening
 	HandleBroadcast("Reloading all spawns for this zone.");
-	DeleteGlobalSpawns();
 	Depop(false, true);
 }
 

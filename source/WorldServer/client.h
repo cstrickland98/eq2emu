@@ -570,6 +570,13 @@ public:
 	void SetPlacementUniqueItemID(int64 id) { placement_unique_item_id = id; }
 	int64 GetPlacementUniqueItemID() { return placement_unique_item_id; }
 
+	void SetDevPlacementMode(bool enabled);
+	bool IsDevPlacementMode() { return devPlacementMode; }
+	void SetDevPlacementPreviewSpawn(Spawn* spawn);
+	Spawn* GetDevPlacementPreviewSpawn() { return devPlacementPreviewSpawn; }
+	void ClearDevPlacementPreview();
+	bool SaveDevPlacementPreview(const char* locationName, int8 percent = 100);
+
 	void SetHasOwnerOrEditAccess(bool val) { hasOwnerOrEditAccess = val; }
 	bool HasOwnerOrEditAccess() { return hasOwnerOrEditAccess; }
 	void RefreshVaultSlotCount();
@@ -876,9 +883,11 @@ private:
 	int32 delayedAccessKey;
 	Timer delayTimer;
 	Spawn* tempPlacementSpawn;
+	Spawn* devPlacementPreviewSpawn;
 	int64 placement_unique_item_id;
 	bool hasOwnerOrEditAccess;
 	bool hasSentTempPlacementSpawn;
+	bool devPlacementMode;
 
 	int32 temporary_transport_id;
 

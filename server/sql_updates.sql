@@ -1,0 +1,16 @@
+insert into spawn (id, name, race, model_type, size, targetable, show_name, command_primary, command_secondary, visual_state, attackable, show_level, show_command_icon, display_hand_icon, faction_id, collision_radius, hp, power, prefix, suffix, last_name, is_instanced_spawn, merchant_min_level, merchant_max_level) values(3250180, 'ralph_manual_object', 255, 1472, 32, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', '', 0, 0, 0);
+insert into spawn_objects (spawn_id) values(3250180);
+insert into spawn_location_name (id, name) values(133798377, 'ralph_manual_location 100');
+insert into spawn_location_entry (spawn_id, spawn_location_id, spawnpercentage) values(3250180, 133798377, 100);
+insert into spawn_location_placement (zone_id, instance_id, spawn_location_id, x, y, z, x_offset, y_offset, z_offset, heading, grid_id) values(325, 0, 133798377, -14.458029, -7.743966, 245.500320, 0.000000, 0.000000, 0.000000, 150.015625, 819993724);
+insert into spawn (id, name, race, model_type, size, targetable, show_name, command_primary, command_secondary, visual_state, attackable, show_level, show_command_icon, display_hand_icon, faction_id, collision_radius, hp, power, prefix, suffix, last_name, is_instanced_spawn, merchant_min_level, merchant_max_level) values(3250181, 'ralph_manual_clone', 255, 1472, 32, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', '', 0, 0, 0);
+insert into spawn_objects (spawn_id) values(3250181);
+insert into spawn_location_name (id, name) values(133798378, 'ralph_manual_location2 100');
+insert into spawn_location_entry (spawn_id, spawn_location_id, spawnpercentage) values(3250181, 133798378, 100);
+insert into spawn_location_placement (zone_id, instance_id, spawn_location_id, x, y, z, x_offset, y_offset, z_offset, heading, grid_id) values(325, 0, 133798378, -19.519245, -7.883708, 237.863602, 0.000000, 0.000000, 0.000000, 222.000000, 819993724);
+delete FROM spawn_location_placement where id=1619757;
+delete FROM spawn_location_entry where spawn_location_id = 133798378;
+delete FROM spawn_location_name where id=133798378;
+delete FROM spawn_location_placement where id=1619756;
+delete FROM spawn_location_entry where spawn_location_id = 133798377;
+delete FROM spawn_location_name where id=133798377;
