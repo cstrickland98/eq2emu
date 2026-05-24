@@ -9,7 +9,7 @@
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
-	#include <winsock.h>
+	#include <WinSock2.h>
 	#include <windows.h>
 #endif
 #include <mysql.h>

@@ -26,7 +26,7 @@
 
 class ZoneServer;
 class SpellProcess;
-class LuaSpell;
+struct LuaSpell;
 
 
 #endif

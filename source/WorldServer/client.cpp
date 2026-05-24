@@ -53,8 +53,10 @@
 #ifdef WIN32
 #include <WinSock2.h>
 #include <windows.h>
+#if !defined(_MSC_VER) || _MSC_VER < 1900
 #define snprintf	_snprintf
 #define vsnprintf	_vsnprintf
+#endif
 #define strncasecmp	_strnicmp
 #define strcasecmp  _stricmp
 #else

@@ -1,0 +1,438 @@
+# EQ2Emu — Live In-Game Content Placement Tool Ralph Loop
+
+## Mission
+
+Create a production-ready live in-game content placement system for EQ2Emu that allows rapid creation and editing of:
+
+* NPC spawns
+* enemy camps
+* harvestables
+* ground objects
+* collections
+* patrol points
+* spawn groups
+
+The system must work with the existing EQ2 client as a black box and require no client modifications.
+
+The tool must:
+
+* support live editing while logged into the game
+* persist changes to the database
+* avoid gameplay/business logic modifications
+* support rapid iteration
+* minimize server restart requirements
+
+---
+
+# Core Design Philosophy
+
+The EQ2 client is treated purely as:
+
+* a viewport
+* a movement/input system
+* a world visualization layer
+
+All tooling logic exists server-side or externally.
+
+The player character itself becomes the editor cursor.
+
+---
+
+# Non-Goals
+
+The following are explicitly forbidden:
+
+* changing packet serialization behavior
+* modifying combat systems
+* changing quest logic
+* changing NPC AI behavior
+* altering client UI assets
+* DLL injection into the client
+* modifying rendering behavior
+* replacing existing spawn systems
+
+This project only adds tooling and workflows.
+
+---
+
+# Success Criteria
+
+The tool is complete when a GM can:
+
+1. Enter placement mode
+2. Spawn preview entities
+3. Move entities live in-world
+4. Save entities directly to DB
+5. Edit existing entities
+6. Clone entities
+7. Delete entities
+8. Reload entities without restarting worldserver
+9. Persist placements correctly across reboot
+10. Complete all workflows without manual SQL editing
+
+---
+
+# Ralph Loop
+
+---
+
+# R — Read
+
+## Objective
+
+Understand the current spawn architecture completely before modification.
+
+## Required Analysis
+
+Inspect:
+
+* spawn database schema
+* spawn placement loading
+* zone loading
+* spawn serialization
+* entity IDs
+* location persistence
+* GM commands
+* reload systems
+* Web API systems
+* Lua reload systems
+
+## Deliverables
+
+Agent must produce:
+
+* spawn system architecture notes
+* placement persistence flow
+* reload flow diagram
+* safe extension points
+* existing GM command capabilities
+
+## Exit Conditions
+
+Proceed only when:
+
+* all spawn persistence paths are identified
+* all live reload capabilities are identified
+* spawn DB tables are understood
+* no unknown critical path remains
+
+---
+
+# A — Analyze
+
+## Objective
+
+Design the minimal invasive placement architecture.
+
+## Required Design Decisions
+
+Agent must decide:
+
+* preview entity implementation
+* temporary vs persistent entity lifecycle
+* live save mechanism
+* reload mechanism
+* synchronization strategy
+* placement command architecture
+* undo/rollback strategy
+
+## Required Constraints
+
+Design must:
+
+* avoid modifying gameplay systems
+* avoid packet changes unless strictly necessary
+* use existing spawn systems where possible
+* isolate all tooling behind GM/dev permissions
+
+## Deliverables
+
+Produce:
+
+* placement architecture document
+* command flow diagram
+* entity lifecycle diagram
+* DB persistence flow
+* reload flow
+
+## Exit Conditions
+
+Proceed only when:
+
+* no gameplay systems require modification
+* architecture supports rollback
+* preview entities are isolated
+* persistence path is deterministic
+
+---
+
+# L — Lay Out Patch
+
+## Objective
+
+Create an implementation plan with isolated milestones.
+
+## Required Milestones
+
+### Phase 1 — Placement Mode
+
+Commands:
+
+* /devmode on
+* /spawnpreview
+* /spawnsave
+
+### Phase 2 — Live Preview Entities
+
+Support:
+
+* temporary entities
+* non-persistent entities
+* visual-only editing
+
+### Phase 3 — Position Editing
+
+Support:
+
+* move
+* rotate
+* clone
+* delete
+
+### Phase 4 — DB Persistence
+
+Support:
+
+* create
+* update
+* remove
+
+### Phase 5 — Live Reload
+
+Support:
+
+* spawn reload
+* zone refresh
+* entity refresh
+
+### Phase 6 — Safety
+
+Support:
+
+* rollback
+* validation
+* GM permission checks
+
+## Deliverables
+
+Agent must generate:
+
+* implementation checklist
+* dependency graph
+* rollback plan
+* testing plan
+
+## Exit Conditions
+
+Proceed only when:
+
+* milestones are independently testable
+* rollback path exists
+* DB modifications are reversible
+
+---
+
+# P — Patch
+
+## Objective
+
+Implement minimally invasive tooling.
+
+## Required Rules
+
+### Allowed Changes
+
+* GM commands
+* tooling systems
+* dev-only systems
+* spawn editing APIs
+* reload systems
+* editor-only entity flags
+
+### Forbidden Changes
+
+* combat behavior
+* client packets unrelated to tooling
+* NPC AI logic
+* quest logic
+* loot logic
+
+## Required Implementation Strategy
+
+Prefer:
+
+* additive systems
+* wrappers
+* adapters
+* tooling namespaces
+
+Avoid:
+
+* rewrites
+* refactors
+* broad architectural cleanup
+
+## Deliverables
+
+Agent must:
+
+* implement incrementally
+* commit logically grouped patches
+* maintain build stability after every patch
+
+## Exit Conditions
+
+Proceed only when:
+
+* project builds
+* worldserver launches
+* existing gameplay still functions
+
+---
+
+# H — Harness
+
+## Objective
+
+Validate functionality autonomously.
+
+## Automated Test Requirements
+
+Agent must create automated validation for:
+
+### Spawn Preview
+
+* preview entity appears
+* preview entity is non-persistent
+* preview entity despawns correctly
+
+### Placement
+
+* entity position updates
+* heading updates
+* cloning works
+* deletion works
+
+### Persistence
+
+* save inserts DB row
+* reload restores entity
+* reboot preserves entity
+
+### Safety
+
+* non-GM blocked
+* invalid zones rejected
+* duplicate IDs prevented
+
+### Performance
+
+* no server crashes
+* no runaway entity leaks
+* acceptable spawn refresh times
+
+---
+
+# Verification Rules
+
+After every implementation phase:
+
+## Required Checks
+
+1. Build succeeds
+2. Worldserver launches
+3. Existing zones load
+4. Existing NPCs still function
+5. Existing quests still function
+6. Existing combat still functions
+7. Existing spawn loading still functions
+
+---
+
+# Autonomous Exit Strategy
+
+The agent MUST stop automatically when ALL conditions below are satisfied.
+
+## Functional Exit Conditions
+
+### Placement Workflow
+
+A GM can:
+
+* enter placement mode
+* create preview spawn
+* move spawn
+* rotate spawn
+* clone spawn
+* delete spawn
+* save spawn
+
+### Persistence Workflow
+
+Saved entities:
+
+* survive zone reload
+* survive server restart
+* load correctly from DB
+
+### Safety Workflow
+
+* non-GM usage blocked
+* invalid placement rejected
+* rollback path exists
+
+### Stability Workflow
+
+* no crashes during repeated placement cycles
+* no entity duplication leaks
+* no DB corruption detected
+
+### Performance Workflow
+
+* placement updates occur in under 250ms
+* reload operations complete successfully
+* no runaway CPU/memory usage
+
+### Regression Workflow
+
+Automated validation confirms:
+
+* existing gameplay behavior unchanged
+* existing zones unchanged
+* existing spawn loading unchanged
+
+---
+
+# Final Deliverables
+
+The agent must generate:
+
+* placement command documentation
+* architecture notes
+* rollback documentation
+* developer workflow guide
+* automated validation scripts
+* sample placement workflows
+
+---
+
+# Hard Stop Rule
+
+The agent must immediately stop if:
+
+* gameplay logic changes become necessary
+* packet protocol modifications become required
+* client modification becomes required
+* architecture rewrite becomes necessary
+
+At that point the task is considered outside scope.

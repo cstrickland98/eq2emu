@@ -33,6 +33,12 @@
 #include <boost/property_tree/json_parser.hpp>
 #include "../../common/types.h"
 
+#ifdef _WIN32
+#ifdef ERROR
+#undef ERROR
+#endif
+#endif
+
 class Client;
 
 enum HealthStatus {
