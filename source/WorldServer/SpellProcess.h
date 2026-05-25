@@ -180,7 +180,7 @@ public:
 	/// <param name='spell'>The Spell to cast</param>
 	/// <param name='caster'>The Entity casting the spell</param>
 	/// <param name='target'>The target(Spawn) of the spell</param>
-	/// <param name='lock'>??? not currently used</param>
+	/// <param name='lock'>Controls nested cleanup locking; false when the caller already holds the spell-process shared lock</param>
 	/// <param name='harvest_spell'>Is this a harvest spell?</param>
 	void ProcessSpell(ZoneServer* zone, Spell* spell, Entity* caster, Spawn* target = 0, bool lock = true, bool harvest_spell = false, LuaSpell* customSpell = 0, int16 custom_cast_time = 0, bool in_heroic_opp = false);
 	void PrintTargets(LuaSpell* spell, std::string stage);
@@ -231,8 +231,9 @@ public:
 	/// <summary>Cast the spell, calls ProcessSpell for the given LuaSpell, as well as sends the messages for the spells and calls the casted on function in the targets spawn script</summary>
 	/// <param name='spell'>LuaSpell to cast</param>
 	/// <param name='passive'>Is this a passive spell being cast?</param>
+	/// <param name='shared_lock_spell'>False when the caller already holds the spell-process shared lock</param>
 	/// <returns>True if the spell was casted</returns>
-	bool CastProcessedSpell(LuaSpell* spell, bool passive = false, bool in_heroic_opp = false);
+	bool CastProcessedSpell(LuaSpell* spell, bool passive = false, bool in_heroic_opp = false, bool shared_lock_spell = true);
 
 	/// <summary>Cast the EntityCommand, calls ProcessEntityCommand for the given EntityCommand, as well as sends the messages for the command and calls the casted on function in the targets spawn script</summary>
 	/// <param name='entity_command'>EntityCommand to cast</param>
@@ -267,10 +268,12 @@ public:
 	/// <summary>Remove the given spell for the given caster from the SpellProcess</summary>
 	/// <param name='caster'>The spawn to remove the spell for</param>
 	/// <param name='spell'>The spell to remove</param>
-	bool DeleteCasterSpell(Spawn* caster, Spell* spell, string reason = "");
+	/// <param name='shared_lock_spell'>False when the caller already holds the spell-process shared lock</param>
+	bool DeleteCasterSpell(Spawn* caster, Spell* spell, string reason = "", bool shared_lock_spell = true);
 
 	/// <summary>Remove the given spell from the ZpellProcess</summary>
 	/// <param name='spell'>LuaSpell to remove</param>
+	/// <param name='shared_lock_spell'>False when the caller already holds the spell-process shared lock</param>
 	bool DeleteCasterSpell(LuaSpell* spell, string reason="", bool removing_all_spells = false, Spawn* remove_target = nullptr, bool zone_shutting_down = false, bool shared_lock_spell = true);
 
 	/// <summary>Interrupt the spell</summary>
@@ -371,7 +374,7 @@ public:
 	MutexList<LuaSpell*>* GetActiveSpells() { return &active_spells; }
 
 	void RemoveTargetFromSpell(LuaSpell* spell, Spawn* target, bool remove_caster = false);
-	void CheckRemoveTargetFromSpell(LuaSpell* spell, bool allow_delete = true, bool removing_all_spells = false);
+	void CheckRemoveTargetFromSpell(LuaSpell* spell, bool allow_delete = true, bool removing_all_spells = false, bool shared_lock_spell = true);
 	void RemoveTargetList(LuaSpell* spell);
 	
 	/// <summary>Adds a solo HO to the SpellProcess</summary>

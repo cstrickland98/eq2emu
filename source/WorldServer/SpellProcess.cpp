@@ -171,14 +171,14 @@ void SpellProcess::Process(){
 				// of a spell that has a duration but is not a "until canceled" spell or a spell with a tick (tradeskill buffs)
 				// to counter this check to see if the spell has a call_frequency > 0 before we call ProcessSpell()
 				if (spell->spell->GetSpellData()->call_frequency > 0 && !ProcessSpell(spell, false)) {
-					DeleteCasterSpell(spell, "expired");
+					DeleteCasterSpell(spell, "expired", false, nullptr, false, false);
 				}
 				else if (((spell->timer.GetDuration() * spell->num_calls) >= spell->spell->GetSpellData()->duration1 * 100) || 
 						 (spell->restored && (spell->timer.GetSetAtTrigger() * spell->num_calls) >= spell->spell->GetSpellData()->duration1 * 100))
-					DeleteCasterSpell(spell, "expired");
+					DeleteCasterSpell(spell, "expired", false, nullptr, false, false);
 			}
 			else
-				CheckRemoveTargetFromSpell(spell);
+				CheckRemoveTargetFromSpell(spell, true, false, false);
 		}
 	}
 	if (SpellCancelList.size() > 0){
@@ -194,7 +194,7 @@ void SpellProcess::Process(){
 
 		itr = tmpList.begin();
 		while (itr != tmpList.end()) {
-			DeleteCasterSpell(*itr, "canceled");
+			DeleteCasterSpell(*itr, "canceled", false, nullptr, false, false);
 			itr++;
 		}
 	}
@@ -231,7 +231,7 @@ void SpellProcess::Process(){
 						if (cast_timer->spell && cast_timer->spell->caster)
 							cast_timer->spell->caster->IsCasting(false);
 						cast_timer->delete_timer = true;
-						CastProcessedSpell(cast_timer->spell, false, cast_timer->in_heroic_opp);
+						CastProcessedSpell(cast_timer->spell, false, cast_timer->in_heroic_opp, false);
 					}
 					else if (cast_timer->entity_command) {
 						cast_timer->delete_timer = true;
@@ -269,7 +269,7 @@ void SpellProcess::Process(){
 		while(itr.Next()){
 			if(itr->first->IsCasting() == false && IsReady(itr->second, itr->first)){
 				RemoveSpellFromQueue(itr->second, itr->first);
-				ProcessSpell(itr->first->GetZone(), itr->second, itr->first, itr->first->GetTarget());
+				ProcessSpell(itr->first->GetZone(), itr->second, itr->first, itr->first->GetTarget(), false);
 			}
 		}
 	}
@@ -419,7 +419,7 @@ void SpellProcess::CheckInterrupt(InterruptStruct* interrupt){
 	}
 }
 
-bool SpellProcess::DeleteCasterSpell(Spawn* caster, Spell* spell, string reason){
+bool SpellProcess::DeleteCasterSpell(Spawn* caster, Spell* spell, string reason, bool shared_lock_spell){
 
 	bool ret = false;
 	// need to use size(true) to get pending updates to the list as well
@@ -429,7 +429,7 @@ bool SpellProcess::DeleteCasterSpell(Spawn* caster, Spell* spell, string reason)
 		while (itr.Next()){
 			lua_spell = itr->value;
 			if (lua_spell->spell == spell && lua_spell->caster == caster) {
-				ret = DeleteCasterSpell(lua_spell, reason);
+				ret = DeleteCasterSpell(lua_spell, reason, false, nullptr, false, shared_lock_spell);
 				break;
 			}
 		}
@@ -439,8 +439,10 @@ bool SpellProcess::DeleteCasterSpell(Spawn* caster, Spell* spell, string reason)
 
 
 bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removing_all_spells, Spawn* remove_target, bool zone_shutting_down, bool shared_lock_spell){
+	bool locked_spell_process = false;
 	if(shared_lock_spell && !removing_all_spells) {
 		MSpellProcess.lock_shared();
+		locked_spell_process = true;
 	}
 
 	bool ret = false;
@@ -466,7 +468,7 @@ bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removi
 					break;
 				}
 			}
-			if(shared_lock_spell && !removing_all_spells) {
+			if(locked_spell_process) {
 				MSpellProcess.unlock_shared();
 			}
 			return target_valid;
@@ -504,7 +506,7 @@ bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removi
 			
 				spell->caster->RemoveProc(0, spell);
 				spell->caster->RemoveMaintainedSpell(spell);
-				CheckRemoveTargetFromSpell(spell, removing_all_spells, removing_all_spells);
+				CheckRemoveTargetFromSpell(spell, removing_all_spells, removing_all_spells, shared_lock_spell && !locked_spell_process);
 			}
 			
 			ZoneServer* zone = spell->zone;
@@ -550,7 +552,7 @@ bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removi
 			lua_interface->RemoveSpell(spell, true, SpellScriptTimersHasSpell(spell), reason, removing_all_spells);
 	}
 	
-	if(shared_lock_spell && !removing_all_spells) {
+	if(locked_spell_process) {
 		MSpellProcess.unlock_shared();
 	}
 	return ret;
@@ -1165,7 +1167,7 @@ void SpellProcess::ProcessSpell(ZoneServer* zone, Spell* spell, Entity* caster, 
 		//If this spell is the toggle cast type and is being toggled off, do this now
 		if (spell->GetSpellData()->cast_type == SPELL_CAST_TYPE_TOGGLE)
 		{
-			bool ret_val = DeleteCasterSpell(caster, spell, "purged");
+			bool ret_val = DeleteCasterSpell(caster, spell, "purged", lock);
 			
 			if (ret_val)
 			{
@@ -1243,7 +1245,7 @@ void SpellProcess::ProcessSpell(ZoneServer* zone, Spell* spell, Entity* caster, 
 								{
 									((Entity*)tmpTarget)->RemoveEffectsFromLuaSpell(conflictSpell);
 									zone->RemoveTargetFromSpell(conflictSpell, tmpTarget, false);
-									CheckRemoveTargetFromSpell(conflictSpell);
+									CheckRemoveTargetFromSpell(conflictSpell, true, false, lock);
 									lua_interface->RemoveSpawnFromSpell(conflictSpell, tmpTarget);
 								}
 							}
@@ -1684,7 +1686,7 @@ void SpellProcess::ProcessSpell(ZoneServer* zone, Spell* spell, Entity* caster, 
 		}
 		else
 		{
-			if(!CastProcessedSpell(lua_spell, false, in_heroic_opp))
+			if(!CastProcessedSpell(lua_spell, false, in_heroic_opp, lock))
 			{
 				lua_spell->caster->GetZone()->GetSpellProcess()->RemoveSpellScriptTimerBySpell(lua_spell);
 				DeleteSpell(lua_spell);
@@ -1742,7 +1744,7 @@ void SpellProcess::ProcessEntityCommand(ZoneServer* zone, EntityCommand* entity_
 	}
 }
 
-bool SpellProcess::CastProcessedSpell(LuaSpell* spell, bool passive, bool in_heroic_opp){
+bool SpellProcess::CastProcessedSpell(LuaSpell* spell, bool passive, bool in_heroic_opp, bool shared_lock_spell){
 	if(!spell || !spell->caster || !spell->spell || spell->interrupted)
 		return false;
 	
@@ -1788,7 +1790,7 @@ bool SpellProcess::CastProcessedSpell(LuaSpell* spell, bool passive, bool in_her
 							{
 								((Entity*)tmpTarget)->RemoveEffectsFromLuaSpell(conflictSpell);
 								zone->RemoveTargetFromSpell(conflictSpell, tmpTarget, false);
-								CheckRemoveTargetFromSpell(conflictSpell);
+								CheckRemoveTargetFromSpell(conflictSpell, true, false, shared_lock_spell);
 								lua_interface->RemoveSpawnFromSpell(conflictSpell, tmpTarget);
 							}
 						}
@@ -2135,7 +2137,7 @@ void SpellProcess::RemoveSpellTimersFromSpawn(Spawn* spawn, bool remove_all, boo
 				continue;
 			
 			if(spell->caster == spawn && call_expire_function){
-				DeleteCasterSpell(spell, "expired", remove_all, nullptr, false, lock_spell_process);
+				DeleteCasterSpell(spell, "expired", remove_all, nullptr, false, !lock_spell_process);
 				continue;
 			}
 
@@ -2881,7 +2883,7 @@ void SpellProcess::RemoveTargetFromSpell(LuaSpell* spell, Spawn* target, bool re
 	MRemoveTargetList.releasewritelock(__FUNCTION__, __LINE__);
 }
 
-void SpellProcess::CheckRemoveTargetFromSpell(LuaSpell* spell, bool allow_delete, bool removing_all_spells){
+void SpellProcess::CheckRemoveTargetFromSpell(LuaSpell* spell, bool allow_delete, bool removing_all_spells, bool shared_lock_spell){
 	if (!spell)
 		return;
 
@@ -2959,7 +2961,7 @@ void SpellProcess::CheckRemoveTargetFromSpell(LuaSpell* spell, bool allow_delete
 		}
 
 		if (should_delete)
-			DeleteCasterSpell(spell, "purged");
+			DeleteCasterSpell(spell, "purged", false, nullptr, false, shared_lock_spell);
 	}
 	else {
 		MRemoveTargetList.releasewritelock(__FUNCTION__, __LINE__);
