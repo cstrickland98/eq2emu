@@ -159,6 +159,7 @@ ZoneServer::ZoneServer(const char* name) {
 	dawn_hour = 0;
 	dawn_minute = 0;
 	reloading_spellprocess = false;
+	spawn_reload_id = 0;
 	expansion_flag = 0;
 	holiday_flag = 0;
 	can_bind = 1;
@@ -558,31 +559,48 @@ void ZoneServer::DeleteFactionLists() {
 void ZoneServer::DeleteData(bool boot_clients){
 	Spawn* spawn = 0;
 	vector<Spawn*> tmp_player_list; // changed to a vector from a MutexList as this is a local variable and don't need mutex stuff for the list
+	vector<Spawn*> pending_spawns;
+	std::unordered_set<Spawn*> handled_spawns;
+
+	auto cleanup_spawn = [&](Spawn* spawn) {
+		if(!spawn || handled_spawns.count(spawn) > 0)
+			return;
+
+		handled_spawns.insert(spawn);
+		if(!boot_clients && (spawn->IsPlayer() || spawn->IsBot()))
+			tmp_player_list.push_back(spawn);
+		else if(spawn->IsPlayer()){
+			Client* client = ((Player*)spawn)->GetClient();
+			if(client)
+				client->Disconnect();
+		}
+		else{
+			RemoveSpawnSupportFunctions(spawn, boot_clients, true);
+			RemoveSpawnFromGrid(spawn, spawn->GetLocation());
+			AddPendingDelete(spawn);
+		}
+	};
 
 	// Clear spawn groups
 	spawn_group_map.clear();
+
+	MPendingSpawnListAdd.writelock(__FUNCTION__, __LINE__);
+	for (auto* pending_spawn : pending_spawn_list_add)
+		pending_spawns.push_back(pending_spawn);
+	pending_spawn_list_add.clear();
+	pending_spawn_reload_ids.clear();
+	MPendingSpawnListAdd.releasewritelock(__FUNCTION__, __LINE__);
 
 	// Loop through the spawn list and set the spawn for deletion
 	map<int32, Spawn*>::iterator itr;
 	MSpawnList.readlock(__FUNCTION__, __LINE__);
 	for (itr = spawn_list.begin(); itr != spawn_list.end(); itr++) {
-		spawn = itr->second;
-		if(spawn){
-			if(!boot_clients && (spawn->IsPlayer() || spawn->IsBot()))
-				tmp_player_list.push_back(spawn);
-			else if(spawn->IsPlayer()){
-				Client* client = ((Player*)spawn)->GetClient();
-				if(client)
-					client->Disconnect();
-			}
-			else{
-				RemoveSpawnSupportFunctions(spawn, boot_clients, true);
-				RemoveSpawnFromGrid(spawn, spawn->GetLocation());
-				AddPendingDelete(spawn);
-			}
-		}
+		cleanup_spawn(itr->second);
 	}
 	MSpawnList.releasereadlock(__FUNCTION__, __LINE__);
+
+	for (auto* pending_spawn : pending_spawns)
+		cleanup_spawn(pending_spawn);
 
 	// Quick hack to prevent a deadlock, RemoveSpawnSupportFunctions() will cancel spells and result in zone->GetSpawnByID()
 	// being called which read locks the spawn list and caused a dead lock as the above mutex's were write locked
@@ -796,6 +814,8 @@ void ZoneServer::ProcessDepop(bool respawns_allowed, bool repop) {
 	Spawn* spawn = 0;
 	PacketStruct* packet = 0;
 	int16 packet_version = 0;
+	vector<pair<Entity*, Entity*>> pets_to_dismiss;
+	std::unordered_set<Entity*> queued_pets;
 	spawn_expire_timers.clear();
 
 	MClientList.readlock(__FUNCTION__, __LINE__);
@@ -828,7 +848,9 @@ void ZoneServer::ProcessDepop(bool respawns_allowed, bool repop) {
 					Entity* owner = ((Entity*)spawn)->GetOwner();
 					if(owner)
 					{
-						owner->DismissPet((Entity*)spawn);
+						Entity* pet = (Entity*)spawn;
+						if(queued_pets.insert(pet).second)
+							pets_to_dismiss.push_back(make_pair(owner, pet));
 						dispatched = true;
 					}
 				}
@@ -842,6 +864,11 @@ void ZoneServer::ProcessDepop(bool respawns_allowed, bool repop) {
 		MSpawnList.releasereadlock(__FUNCTION__, __LINE__);
 	}
 	MClientList.releasereadlock(__FUNCTION__, __LINE__);
+
+	for (auto& pet_info : pets_to_dismiss) {
+		if(pet_info.first && pet_info.second)
+			pet_info.first->DismissPet(pet_info.second);
+	}
 
 	DeleteTransporters();
 	safe_delete(packet);	
@@ -3560,6 +3587,7 @@ void ZoneServer::AddSpawn(Spawn* spawn) {
 	// main spawn thread will put into the spawn_list when ever it has a chance.
 	MPendingSpawnListAdd.writelock(__FUNCTION__, __LINE__);
 	pending_spawn_list_add.push_back(spawn);
+	pending_spawn_reload_ids[spawn] = spawn_reload_id.load();
 	MPendingSpawnListAdd.releasewritelock(__FUNCTION__, __LINE__);
 	
 	spawn_range.Trigger();
@@ -8795,6 +8823,7 @@ void ZoneServer::ReloadSpawns() {
 	if (reloading)
 		return;
 
+	++spawn_reload_id;
 	reloading = true;
 	world.SetReloadingSubsystem("Spawns");
 	// Let every one in the zone know what is happening
@@ -9284,20 +9313,42 @@ bool ZoneServer::HouseItemSpawnExists(int32 item_id) {
 }
 
 void ZoneServer::ProcessPendingSpawns() {
-	std::vector<Spawn*> toAdd;
+	std::vector<std::pair<Spawn*, int32>> toAdd;
 	{
 		MPendingSpawnListAdd.writelock(__FUNCTION__, __LINE__);
 		toAdd.reserve(pending_spawn_list_add.size());
-		for (auto *p : pending_spawn_list_add)
-			toAdd.push_back(p);
+		for (auto *p : pending_spawn_list_add) {
+			auto reload_itr = pending_spawn_reload_ids.find(p);
+			int32 pending_reload_id = reload_itr != pending_spawn_reload_ids.end() ? reload_itr->second : spawn_reload_id.load();
+			toAdd.push_back(make_pair(p, pending_reload_id));
+		}
 		pending_spawn_list_add.clear();
+		pending_spawn_reload_ids.clear();
 		MPendingSpawnListAdd.releasewritelock(__FUNCTION__, __LINE__);
 	}
 	
 	bool spawnsAdded = false;
+	int32 current_reload_id = spawn_reload_id.load();
 	
-	for (auto *p : toAdd)
+	for (auto& pending_spawn : toAdd)
 	{
+		Spawn* p = pending_spawn.first;
+		if(!p)
+			continue;
+
+		if(p->IsDeletedSpawn()) {
+			if(!p->IsPlayer() && !p->IsBot())
+				AddPendingDelete(p);
+			continue;
+		}
+
+		if(pending_spawn.second != current_reload_id && !p->IsPlayer() && !p->IsBot()) {
+			RemoveSpawnSupportFunctions(p, true, true);
+			RemoveSpawnFromGrid(p, p->GetLocation());
+			AddPendingDelete(p);
+			continue;
+		}
+
 		MSpawnList.writelock(__FUNCTION__, __LINE__);
 		spawn_list[p->GetID()] = p;
 		

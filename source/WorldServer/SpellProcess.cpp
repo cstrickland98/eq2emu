@@ -47,16 +47,30 @@ SpellProcess::~SpellProcess(){
 }
 
 void SpellProcess::RemoveCaster(Spawn* caster, bool lock_spell_process){
+	if(!caster)
+		return;
+
+	int32 caster_id = caster->GetID();
 	if(lock_spell_process)
 		MSpellProcess.lock();
 	MutexList<LuaSpell*>::iterator active_spells_itr = active_spells.begin();
 	while(active_spells_itr.Next()){
 		LuaSpell* spell = active_spells_itr->value;
+		if(!spell)
+			continue;
+
 		if(spell->caster == caster) {
 			spell->caster = nullptr;
 		}
-		if(spell->initial_target == caster->GetID())
+		if(spell->initial_target == caster_id)
 			spell->initial_target = 0;
+		if(spell->HasTarget(caster_id)) {
+			if(lua_interface)
+				lua_interface->RemoveSpawnFromSpell(spell, caster);
+			spell->RemoveTarget(caster_id);
+		}
+		if(caster->IsPlayer())
+			spell->RemoveCharIDTarget(((Player*)caster)->GetCharacterID());
 	}
 	if(lock_spell_process)
 		MSpellProcess.unlock();
@@ -457,7 +471,7 @@ bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removi
 			}
 			return target_valid;
 		}
-		if (!zone_shutting_down && spell->caster) { // spell->caster ptr cannot be trusted during zone shutdown
+		if (!zone_shutting_down) { // spell->caster ptr cannot be trusted during zone shutdown
 			if(spell->caster) {
 				if(spell->caster->GetThreatTransfer() && spell->caster->GetThreatTransfer()->Spell == spell) {
 					spell->caster->SetThreatTransfer(nullptr);
@@ -495,9 +509,9 @@ bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removi
 			
 			ZoneServer* zone = spell->zone;
 			if(zone) {
-			LogWrite(SPELL__DEBUG, 0, "Spell", "SpellProcess::DeleteCasterSpell RemoveTargets Spell: %s.", 
-										spellName.c_str());
-            for (int32 id : spell->GetTargets()) {
+				LogWrite(SPELL__DEBUG, 0, "Spell", "SpellProcess::DeleteCasterSpell RemoveTargets Spell: %s.",
+											spellName.c_str());
+				for (int32 id : spell->GetTargets()) {
 					target = zone->GetSpawnByID(id);
 					if(target && target->IsEntity()){
 						LogWrite(SPELL__INFO, 0, "Spell", "SpellProcess::DeleteCasterSpell RemoveTargets Spell: %s, Reason: %s, CurrentTarget: %s (%u).", 
@@ -508,8 +522,7 @@ bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removi
 					else{
 						LogWrite(SPELL__INFO, 0, "Spell", "SpellProcess::DeleteCasterSpell RemoveTarget Spell: %s, Reason: %s, CurrentTarget: ??Unknown??.", 
 													spellName.c_str(), reason.c_str());
-						spell->RemoveTarget(spell->caster->GetID());
-						lua_interface->RemoveSpawnFromSpell(spell, spell->caster);
+						spell->RemoveTarget(id);
 					}
 					if(target && target->IsPlayer() && spell->spell && spell->spell->GetSpellData()->fade_message.length() > 0){
 						Client* client = ((Player*)target)->GetClient();
@@ -524,7 +537,7 @@ bool SpellProcess::DeleteCasterSpell(LuaSpell* spell, string reason, bool removi
 						if (client) {
 							string fade_message_others = spell->spell->GetSpellData()->fade_message_others;
 							ReplaceEffectTokens(fade_message_others, spell->caster, target);
-							if(spell->caster->GetZone()) {
+							if(spell->caster && spell->caster->GetZone()) {
 								spell->caster->GetZone()->SimpleMessage(CHANNEL_SPELLS_OTHER, fade_message_others.c_str(), target, 50);
 							}
 						}
@@ -2137,8 +2150,8 @@ void SpellProcess::RemoveSpellTimersFromSpawn(Spawn* spawn, bool remove_all, boo
 				}
 			}
 			if(foundMatch) {
-				if (spawn->IsEntity())
-					((Entity*)spawn)->RemoveSpellEffect(spell);
+				if (spawn->IsEntity() && lua_interface)
+					lua_interface->RemoveSpawnFromSpell(spell, spawn);
 				RemoveTargetFromSpell(spell, spawn, remove_all);
 			}
 		}
@@ -2887,7 +2900,8 @@ void SpellProcess::CheckRemoveTargetFromSpell(LuaSpell* spell, bool allow_delete
 			remove_targets = it->second;
 			if (remove_targets){
 				for (remove_target_itr = remove_targets->begin(); remove_target_itr != remove_targets->end(); remove_target_itr++){
-					remove_spawn = spell->zone->GetSpawnByID((*remove_target_itr));
+					int32 remove_target_id = (*remove_target_itr);
+					remove_spawn = spell->zone ? spell->zone->GetSpawnByID(remove_target_id) : nullptr;
 					if (remove_spawn) {
 						bool found_target = false;
 						if(remove_spawn->IsPlayer())
@@ -2912,6 +2926,14 @@ void SpellProcess::CheckRemoveTargetFromSpell(LuaSpell* spell, bool allow_delete
 						}
 						else if(remove_spawn && std::find(spawnsToRemove.begin(), spawnsToRemove.end(), remove_spawn) == spawnsToRemove.end()) {
 							spawnsToRemove.push_back(remove_spawn);
+						}
+					}
+					else if(spell->HasTarget(remove_target_id)) {
+						spell->RemoveTarget(remove_target_id);
+						targets_empty = (spell->HasNoTargets() && spell->HasNoCharIDTargets());
+						if (targets_empty && allow_delete) {
+							should_delete = true;
+							break;
 						}
 					}
 				}
@@ -3072,8 +3094,10 @@ void SpellProcess::DeleteSpell(LuaSpell* spell)
 	}
 	for (int32 id : spell->GetTargets()) {
 		Spawn* target = spell->zone->GetSpawnByID(id);
-		if (!target || !target->IsEntity())
+		if (!target || !target->IsEntity()) {
+			spell->RemoveTarget(id);
 			continue;
+		}
 
 		spell->RemoveTarget(target->GetID());
 		lua_interface->RemoveSpawnFromSpell(spell, target);
@@ -3132,12 +3156,20 @@ void SpellProcess::DeleteActiveSpell(LuaSpell* spell, bool skipRemoveCurrent) {
 	if(spell->zone) {
 		for (int32 id : spell->GetTargets()) {
 			Spawn* target = spell->zone->GetSpawnByID(id);
-			if(target)
+			if(target) {
 				lua_interface->RemoveSpawnFromSpell(spell, target);
+				spell->RemoveTarget(id);
+			}
+			else {
+				spell->RemoveTarget(id);
+			}
 		}
 	}
-	if	(spell->caster) {
+	if	(spell->caster && !spell->caster->IsDeletedSpawn()) {
 		((Entity*)spell->caster)->RemoveMaintainedSpell(spell);
+	}
+	else if(spell->caster && spell->caster->IsDeletedSpawn()) {
+		spell->caster = nullptr;
 	}
 	if(!skipRemoveCurrent) {
 		lua_interface->RemoveCurrentSpell(spell->state, spell, true);

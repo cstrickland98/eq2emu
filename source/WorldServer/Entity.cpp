@@ -2011,7 +2011,7 @@ void Entity::CalculateSpellBonuses(ItemStatsValues* stats){
 		bool race_match = false;
 		while(itr.Next()) {
 			if (itr.value->race_req.size() > 0) {
-				for (int8 i = 0; i < itr.value->race_req.size(); i++) {
+				for (size_t i = 0; i < itr.value->race_req.size(); i++) {
 					if (GetRace() == itr.value->race_req[i]) {
 						race_match = true;
 					}
@@ -2028,7 +2028,7 @@ void Entity::CalculateSpellBonuses(ItemStatsValues* stats){
 		//Sort the bonuses by spell id and luaspell
 		BonusValues* bonus = nullptr;
 		map <int32, map<LuaSpell*, vector<BonusValues*> > > sort;
-		for (int8 i = 0; i < bv.size(); i++){
+		for (size_t i = 0; i < bv.size(); i++){
 			bonus = bv.at(i);
 			sort[bonus->spell_id][bonus->luaspell].push_back(bonus);
 		}
@@ -2041,15 +2041,24 @@ void Entity::CalculateSpellBonuses(ItemStatsValues* stats){
 			//Find the highest tier for this spell id
 			for (tier_itr = sort_itr->second.begin(); tier_itr != sort_itr->second.end(); tier_itr++){
 				LuaSpell* current_spell = tier_itr->first;
-				sint8 current_tier = 0;
-				if (current_spell && current_spell->spell && ((current_tier = current_spell->spell->GetSpellTier()) > highest_tier)) {
+				sint8 current_tier = -1;
+				vector<BonusValues*>* tier_bonuses = &tier_itr->second;
+				for (size_t i = 0; i < tier_bonuses->size(); i++) {
+					BonusValues* tier_bonus = tier_bonuses->at(i);
+					if (tier_bonus && tier_bonus->tier > current_tier)
+						current_tier = tier_bonus->tier;
+				}
+				if (current_spell && current_tier > highest_tier) {
 					highest_tier = current_tier;
 					key = current_spell;
 				}
 			}
+			if (!key)
+				continue;
+
 			//We've found the highest tier for this spell id, so add the bonuses
 			vector<BonusValues*>* final_bonuses = &sort_itr->second[key];
-			for (int8 i = 0; i < final_bonuses->size(); i++)
+			for (size_t i = 0; i < final_bonuses->size(); i++)
 				world.AddBonuses(nullptr, stats, final_bonuses->at(i)->type, final_bonuses->at(i)->value, this);
 		}
 	}

@@ -889,6 +889,7 @@ private:
 
 	/* Lists */
 	list<Spawn*>	pending_spawn_list_add;
+	map<Spawn*, int32> pending_spawn_reload_ids;
 	
 	/* Specialized Lists to update specific scenarios */
 	std::map<int32, Spawn*>	subspawn_list[SUBSPAWN_TYPES::MAX_SUBSPAWN_TYPE];
@@ -974,6 +975,7 @@ private:
 	int		dusk_minute;
 	int		dawn_minute;
 	int32	spawn_delete_timer;
+	std::atomic<int32> spawn_reload_id;
 	int32	expansion_flag;
 	int32	holiday_flag;
 	//devn00b:test
