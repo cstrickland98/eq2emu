@@ -129,6 +129,41 @@ extern MasterAchievementList master_achievement_list;
 extern map<int16, int16> EQOpcodeVersions;
 extern BrokerManager broker;
 
+static const char* GetExecutableBuildTime()
+{
+	static std::string build_time;
+	if (!build_time.empty())
+		return build_time.c_str();
+
+#ifdef WIN32
+	char module_path[MAX_PATH] = { 0 };
+	DWORD length = GetModuleFileNameA(nullptr, module_path, sizeof(module_path));
+	if (length > 0 && length < sizeof(module_path)) {
+		WIN32_FILE_ATTRIBUTE_DATA file_data;
+		if (GetFileAttributesExA(module_path, GetFileExInfoStandard, &file_data)) {
+			FILETIME local_file_time;
+			SYSTEMTIME system_time;
+			if (FileTimeToLocalFileTime(&file_data.ftLastWriteTime, &local_file_time) &&
+				FileTimeToSystemTime(&local_file_time, &system_time)) {
+				char timestamp[32];
+				snprintf(timestamp, sizeof(timestamp), "%04u-%02u-%02u %02u:%02u:%02u",
+					static_cast<unsigned int>(system_time.wYear),
+					static_cast<unsigned int>(system_time.wMonth),
+					static_cast<unsigned int>(system_time.wDay),
+					static_cast<unsigned int>(system_time.wHour),
+					static_cast<unsigned int>(system_time.wMinute),
+					static_cast<unsigned int>(system_time.wSecond));
+				build_time = timestamp;
+				return build_time.c_str();
+			}
+		}
+	}
+#endif
+
+	build_time = std::string(COMPILE_DATE) + " " + COMPILE_TIME;
+	return build_time.c_str();
+}
+
 ThreadReturnType ItemLoad (void* tmp);
 ThreadReturnType AchievmentLoad (void* tmp);
 ThreadReturnType SpellLoad (void* tmp);
@@ -896,7 +931,7 @@ void UpdateWindowTitle(char* iNewTitle) {
 	}
 	else {
 		string servername = net.GetWorldName();
-		snprintf(tmp, sizeof(tmp), "%s (%s), Version: %s: %i Clients(s) in %i Zones(s)", EQ2EMU_MODULE, servername.c_str(), CURRENT_VERSION, numclients, numzones);
+		snprintf(tmp, sizeof(tmp), "%s (%s), Version: %s, Build: %s: %i Clients(s) in %i Zones(s)", EQ2EMU_MODULE, servername.c_str(), CURRENT_VERSION, GetExecutableBuildTime(), numclients, numzones);
 	}
 	// Zero terminate ([max - 1] = 0) the string to prevent a warning 
 	tmp[499] = 0;
@@ -971,7 +1006,8 @@ void NetConnection::WelcomeHeader()
 	HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
 	SetConsoleTextAttribute(console, FOREGROUND_WHITE_BOLD);
 #endif
-	printf("Module: %s, Version: %s", EQ2EMU_MODULE, CURRENT_VERSION);
+	printf("Module: %s, Version: %s\n", EQ2EMU_MODULE, CURRENT_VERSION);
+	printf("Executable Build Time: %s", GetExecutableBuildTime());
 #ifdef _WIN32
 	SetConsoleTextAttribute(console, FOREGROUND_YELLOW_BOLD);
 #endif

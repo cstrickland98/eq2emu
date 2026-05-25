@@ -28,6 +28,11 @@ if not exist "%SERVER_DIR%server_config.json" (
 
 set "MARIADB_TLS_DISABLE_PEER_VERIFICATION=1"
 
+echo Dev build executable stamps:
+call :PrintBuildStamp "login.exe" "%LOGIN_EXE%"
+call :PrintBuildStamp "eq2world.exe" "%WORLD_EXE%"
+echo.
+
 echo Starting rebuilt login server...
 start "EQ2Emu Login" /D "%SERVER_DIR%" "%LOGIN_EXE%"
 
@@ -44,3 +49,13 @@ echo Working directory:
 echo   %SERVER_DIR%
 
 endlocal
+exit /b 0
+
+:PrintBuildStamp
+set "BUILD_LABEL=%~1"
+set "BUILD_PATH=%~2"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = $env:BUILD_PATH; $i = Get-Item -LiteralPath $p; $sha = [System.Security.Cryptography.SHA256]::Create(); $stream = [System.IO.File]::OpenRead($p); try { $h = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').Substring(0, 12) } finally { $stream.Dispose(); $sha.Dispose() }; Write-Output ('  {0,-12} built {1:yyyy-MM-dd HH:mm:ss zzz}  size {2:N0} bytes  sha256 {3}' -f $env:BUILD_LABEL, $i.LastWriteTime, $i.Length, $h)"
+if errorlevel 1 (
+    for %%I in ("%BUILD_PATH%") do echo   %BUILD_LABEL% built %%~tI  size %%~zI bytes
+)
+exit /b 0

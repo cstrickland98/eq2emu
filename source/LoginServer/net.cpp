@@ -71,6 +71,41 @@ char version[200], consoletitle[200];
 #include "../common/CRC16.h"
 #include <fstream>
 
+static const char* GetExecutableBuildTime()
+{
+	static std::string build_time;
+	if (!build_time.empty())
+		return build_time.c_str();
+
+#ifdef WIN32
+	char module_path[MAX_PATH] = { 0 };
+	DWORD length = GetModuleFileNameA(nullptr, module_path, sizeof(module_path));
+	if (length > 0 && length < sizeof(module_path)) {
+		WIN32_FILE_ATTRIBUTE_DATA file_data;
+		if (GetFileAttributesExA(module_path, GetFileExInfoStandard, &file_data)) {
+			FILETIME local_file_time;
+			SYSTEMTIME system_time;
+			if (FileTimeToLocalFileTime(&file_data.ftLastWriteTime, &local_file_time) &&
+				FileTimeToSystemTime(&local_file_time, &system_time)) {
+				char timestamp[32];
+				snprintf(timestamp, sizeof(timestamp), "%04u-%02u-%02u %02u:%02u:%02u",
+					static_cast<unsigned int>(system_time.wYear),
+					static_cast<unsigned int>(system_time.wMonth),
+					static_cast<unsigned int>(system_time.wDay),
+					static_cast<unsigned int>(system_time.wHour),
+					static_cast<unsigned int>(system_time.wMinute),
+					static_cast<unsigned int>(system_time.wSecond));
+				build_time = timestamp;
+				return build_time.c_str();
+			}
+		}
+	}
+#endif
+
+	build_time = std::string(COMPILE_DATE) + " " + COMPILE_TIME;
+	return build_time.c_str();
+}
+
 int main(int argc, char** argv){
 #ifdef _DEBUG
 	_CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -182,6 +217,7 @@ void NetConnection::HitKey(int keyhit)
 	{
 		printf("========Version Info=========\n");
 		printf("%s %s\n", EQ2EMU_MODULE, CURRENT_VERSION);
+		printf("Executable Build Time: %s\n", GetExecutableBuildTime());
 		printf("Last Compiled on %s %s\n", COMPILE_DATE, COMPILE_TIME);
 		printf("=============================\n\n");
 		break;
@@ -293,7 +329,7 @@ void NetConnection::UpdateWindowTitle(char* iNewTitle) {
 		snprintf(tmp, sizeof(tmp), "Login: %s", iNewTitle);
 	}
 	else {
-		snprintf(tmp, sizeof(tmp), "%s, Version: %s: %i Server(s), %i Client(s) Connected", EQ2EMU_MODULE, CURRENT_VERSION, net.numservers, net.numclients);
+		snprintf(tmp, sizeof(tmp), "%s, Version: %s, Build: %s: %i Server(s), %i Client(s) Connected", EQ2EMU_MODULE, CURRENT_VERSION, GetExecutableBuildTime(), net.numservers, net.numclients);
 	}
 	SetConsoleTitle(tmp);
 #endif
@@ -305,7 +341,8 @@ void NetConnection::WelcomeHeader()
 	HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
 	SetConsoleTextAttribute(console, FOREGROUND_WHITE_BOLD);
 #endif
-	printf("Module: %s, Version: %s", EQ2EMU_MODULE, CURRENT_VERSION);
+	printf("Module: %s, Version: %s\n", EQ2EMU_MODULE, CURRENT_VERSION);
+	printf("Executable Build Time: %s", GetExecutableBuildTime());
 #ifdef _WIN32
 	SetConsoleTextAttribute(console, FOREGROUND_YELLOW_BOLD);
 #endif
